@@ -414,14 +414,15 @@ function snn_edu_comment_rating_admin_css() {
                 white-space: nowrap;
             }
             .snn-star {
-                display: inline-block;
-                margin-right: 2px;
+                display: inline-block; 
             }
             .snn-star-filled {
                 color: #ffc107;
+                font-size:24px;
             }
             .snn-star-empty {
-                color: #ccc;
+                color: #727272ff;
+                font-size:24px;
             }
         </style>';
     }
