@@ -431,6 +431,69 @@ add_action('admin_head', 'snn_edu_comment_rating_admin_css');
 
 /**
  * ==========================================
+ * FEATURE 7: Average Comment Rating Shortcode
+ * ==========================================
+ */
+
+/**
+ * Shortcode: Calculate average rating from all comments on current post
+ * Usage: [snn_rating_comment_total_average]
+ */
+function snn_edu_average_comment_rating_shortcode($atts) {
+    // Get current post ID
+    $post_id = get_the_ID();
+    if (!$post_id) {
+        return '0';
+    }
+    
+    // Get all approved comments for this post
+    $comments = get_comments(array(
+        'post_id' => $post_id,
+        'status' => 'approve',
+        'type' => 'comment'
+    ));
+    
+    if (empty($comments)) {
+        return '0';
+    }
+    
+    $total_rating = 0;
+    $rating_count = 0;
+    
+    // Loop through comments and collect ratings
+    foreach ($comments as $comment) {
+        $rating = get_comment_meta($comment->comment_ID, 'snn_rating_comment', true);
+        
+        // Only count if rating exists and is a valid number
+        if (!empty($rating) && is_numeric($rating)) {
+            $total_rating += floatval($rating);
+            $rating_count++;
+        }
+    }
+    
+    // Calculate average
+    if ($rating_count == 0) {
+        return '0';
+    }
+    
+    $average = $total_rating / $rating_count;
+    
+    // Round to nearest 0.5
+    $average = round($average * 2) / 2;
+    
+    // Format the number (remove .0 for whole numbers)
+    if (floor($average) == $average) {
+        return number_format($average, 0);
+    } else {
+        return number_format($average, 1);
+    }
+}
+
+// Register shortcode
+add_shortcode('snn_rating_comment_total_average', 'snn_edu_average_comment_rating_shortcode');
+
+/**
+ * ==========================================
  * SETTINGS PAGE
  * ==========================================
  */
@@ -594,6 +657,14 @@ function snn_edu_settings_page_html() {
                 <li>If your custom field is named <code>lesson_video</code>, use: <code>[snn_course_single_hour_minutes_video field="lesson_video"]</code></li>
                 <li>If your custom field is named <code>course_video</code>, use: <code>[snn_course_total_hour_minutes_videos field="course_video"]</code></li>
             </ul>
+            
+            <h3>⭐ Average Comment Rating</h3>
+            <p>Displays the average rating from all comments on the current post:</p>
+            <div class="snn-shortcode-box">
+                <code>[snn_rating_comment_total_average]</code>
+                <button class="button button-small snn-copy-btn" onclick="snnCopyToClipboard('[snn_rating_comment_total_average]')">Copy</button>
+            </div>
+            <p class="description">Reads the <code>snn_rating_comment</code> custom field from all approved comments, calculates the average, and outputs a number (e.g., 3, 4.5, 2.5). Returns 0 if no ratings exist.</p>
         </div>
         
         <hr>
