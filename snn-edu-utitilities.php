@@ -1,4 +1,4 @@
-<?php  
+<?php   
 /** 
  * Plugin Name: SNN Edu Utilities
  * Plugin URI: https://github.com/sinanisler/snn-edu-utilities
