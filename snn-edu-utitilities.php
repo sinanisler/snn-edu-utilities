@@ -238,12 +238,15 @@ function snn_edu_format_duration($total_seconds) {
 
 /**
  * Shortcode: Single video duration
- * Usage: [snn_course_single_hour_minutes_video:video_field]
+ * Usage: [snn_course_single_hour_minutes_video field="video_field"]
  */
-function snn_edu_single_video_duration_shortcode($atts, $content = null, $tag = '') {
-    // Extract custom field name from tag
-    $parts = explode(':', $tag);
-    $custom_field = isset($parts[1]) ? trim($parts[1]) : '';
+function snn_edu_single_video_duration_shortcode($atts) {
+    // Parse shortcode attributes
+    $atts = shortcode_atts(array(
+        'field' => ''
+    ), $atts, 'snn_course_single_hour_minutes_video');
+    
+    $custom_field = trim($atts['field']);
     
     if (empty($custom_field)) {
         return '<span class="snn-video-error">Error: No custom field specified</span>';
@@ -276,12 +279,15 @@ function snn_edu_single_video_duration_shortcode($atts, $content = null, $tag = 
 
 /**
  * Shortcode: Total video duration from parent and children
- * Usage: [snn_course_total_hour_minutes_videos:video_field]
+ * Usage: [snn_course_total_hour_minutes_videos field="video_field"]
  */
-function snn_edu_total_video_duration_shortcode($atts, $content = null, $tag = '') {
-    // Extract custom field name from tag
-    $parts = explode(':', $tag);
-    $custom_field = isset($parts[1]) ? trim($parts[1]) : '';
+function snn_edu_total_video_duration_shortcode($atts) {
+    // Parse shortcode attributes
+    $atts = shortcode_atts(array(
+        'field' => ''
+    ), $atts, 'snn_course_total_hour_minutes_videos');
+    
+    $custom_field = trim($atts['field']);
     
     if (empty($custom_field)) {
         return '<span class="snn-video-error">Error: No custom field specified</span>';
@@ -333,23 +339,9 @@ function snn_edu_total_video_duration_shortcode($atts, $content = null, $tag = '
     return '<span class="snn-video-total-duration">' . esc_html($formatted) . '</span>';
 }
 
-// Register shortcodes dynamically to accept custom field names
-add_action('init', function() {
-    // Register generic tags that will match our patterns
-    add_shortcode('snn_course_single_hour_minutes_video', 'snn_edu_single_video_duration_shortcode');
-    add_shortcode('snn_course_total_hour_minutes_videos', 'snn_edu_total_video_duration_shortcode');
-    
-    // Hook into shortcode parsing to handle custom field names in tag
-    add_filter('do_shortcode_tag', function($output, $tag, $attr, $m) {
-        if (strpos($tag, 'snn_course_single_hour_minutes_video:') === 0) {
-            return snn_edu_single_video_duration_shortcode($attr, null, $tag);
-        }
-        if (strpos($tag, 'snn_course_total_hour_minutes_videos:') === 0) {
-            return snn_edu_total_video_duration_shortcode($attr, null, $tag);
-        }
-        return $output;
-    }, 10, 4);
-});
+// Register shortcodes
+add_shortcode('snn_course_single_hour_minutes_video', 'snn_edu_single_video_duration_shortcode');
+add_shortcode('snn_course_total_hour_minutes_videos', 'snn_edu_total_video_duration_shortcode');
 
 /**
  * ==========================================
@@ -482,23 +474,23 @@ function snn_edu_settings_page_html() {
             <h4>Single Video Duration</h4>
             <p>Displays the duration of a video from the current post's custom field:</p>
             <div class="snn-shortcode-box">
-                <code>[snn_course_single_hour_minutes_video:your_custom_field_name]</code>
-                <button class="button button-small snn-copy-btn" onclick="snnCopyToClipboard('[snn_course_single_hour_minutes_video:your_custom_field_name]')">Copy</button>
+                <code>[snn_course_single_hour_minutes_video field="your_custom_field_name"]</code>
+                <button class="button button-small snn-copy-btn" onclick="snnCopyToClipboard('[snn_course_single_hour_minutes_video field=&quot;your_custom_field_name&quot;]')">Copy</button>
             </div>
             <p class="description">Replace <code>your_custom_field_name</code> with your actual custom field name that stores the video attachment ID.</p>
             
             <h4>Total Course Duration</h4>
             <p>Displays the combined duration of videos from parent post and all child posts:</p>
             <div class="snn-shortcode-box">
-                <code>[snn_course_total_hour_minutes_videos:your_custom_field_name]</code>
-                <button class="button button-small snn-copy-btn" onclick="snnCopyToClipboard('[snn_course_total_hour_minutes_videos:your_custom_field_name]')">Copy</button>
+                <code>[snn_course_total_hour_minutes_videos field="your_custom_field_name"]</code>
+                <button class="button button-small snn-copy-btn" onclick="snnCopyToClipboard('[snn_course_total_hour_minutes_videos field=&quot;your_custom_field_name&quot;]')">Copy</button>
             </div>
             <p class="description">Use this on parent/course pages to show total duration of all lessons. Replace <code>your_custom_field_name</code> with your actual custom field name.</p>
             
             <h4>Example Usage:</h4>
             <ul style="list-style: disc; margin-left: 20px;">
-                <li>If your custom field is named <code>lesson_video</code>, use: <code>[snn_course_single_hour_minutes_video:lesson_video]</code></li>
-                <li>If your custom field is named <code>course_video</code>, use: <code>[snn_course_total_hour_minutes_videos:course_video]</code></li>
+                <li>If your custom field is named <code>lesson_video</code>, use: <code>[snn_course_single_hour_minutes_video field="lesson_video"]</code></li>
+                <li>If your custom field is named <code>course_video</code>, use: <code>[snn_course_total_hour_minutes_videos field="course_video"]</code></li>
             </ul>
         </div>
         
