@@ -66,121 +66,6 @@ add_action('after_setup_theme', 'snn_edu_hide_admin_bar');
 
 /**
  * ==========================================
- * FEATURE 3: Dashboard Notepad Widget
- * ==========================================
- */
-// Register the dashboard widget
-function snn_edu_register_dashboard_notepad_widget() {
-    if (!snn_edu_get_option('enable_dashboard_notepad', false)) {
-        return;
-    }
-    
-    wp_add_dashboard_widget(
-        'snn_edu_dashboard_notepad_widget',
-        'My Notepad',
-        'snn_edu_display_dashboard_notepad_widget'
-    );
-}
-add_action('wp_dashboard_setup', 'snn_edu_register_dashboard_notepad_widget');
-
-// Display the widget content
-function snn_edu_display_dashboard_notepad_widget() {
-    // Check user capabilities
-    if (!current_user_can('edit_posts')) {
-        echo '<p>You do not have permission to use this notepad.</p>';
-        return;
-    }
-
-    // Get current user ID
-    $user_id = get_current_user_id();
-    
-    // Get saved notes from user meta
-    $notes = get_user_meta($user_id, 'snn_edu_dashboard_notepad_content', true);
-    
-    ?>
-    <form method="post" action="" id="snn-edu-dashboard-notepad-form">
-        <?php
-        // Security nonce
-        wp_nonce_field('snn_edu_save_dashboard_notepad', 'snn_edu_dashboard_notepad_nonce');
-        
-        // TinyMCE Editor
-        wp_editor($notes, 'snn_edu_dashboard_notepad_editor', array(
-            'textarea_name' => 'snn_edu_dashboard_notepad_content',
-            'media_buttons' => false,
-            'textarea_rows' => 35,
-            'teeny' => true,
-            'quicktags' => true,
-        ));
-        ?>
-        
-        <p style="margin-top: 10px;">
-            <input type="submit" name="snn_edu_save_dashboard_notepad" class="button button-primary" value="Save Notes">
-            <span id="snn-edu-notepad-save-message" style="margin-left: 10px; color: green;"></span>
-        </p>
-    </form>
-
-    <script type="text/javascript">
-    jQuery(document).ready(function($) {
-        $('#snn-edu-dashboard-notepad-form').on('submit', function(e) {
-            e.preventDefault();
-            
-            // Get editor content
-            var content = '';
-            if (typeof tinyMCE !== 'undefined' && tinyMCE.get('snn_edu_dashboard_notepad_editor')) {
-                content = tinyMCE.get('snn_edu_dashboard_notepad_editor').getContent();
-            } else {
-                content = $('#snn_edu_dashboard_notepad_editor').val();
-            }
-            
-            // AJAX save
-            $.post(ajaxurl, {
-                action: 'snn_edu_save_dashboard_notepad',
-                nonce: $('#snn_edu_dashboard_notepad_nonce').val(),
-                content: content
-            }, function(response) {
-                if (response.success) {
-                    $('#snn-edu-notepad-save-message').text('✓ Saved!').fadeIn().delay(2000).fadeOut();
-                } else {
-                    $('#snn-edu-notepad-save-message').css('color', 'red').text('Error saving notes').fadeIn();
-                }
-            });
-        });
-    });
-    </script>
-    <?php
-}
-
-// Handle AJAX save
-function snn_edu_save_dashboard_notepad_ajax() {
-    // Verify nonce
-    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'snn_edu_save_dashboard_notepad')) {
-        wp_send_json_error('Invalid security token');
-        return;
-    }
-    
-    // Check user capabilities
-    if (!current_user_can('edit_posts')) {
-        wp_send_json_error('Insufficient permissions');
-        return;
-    }
-    
-    // Get and sanitize content
-    $content = isset($_POST['content']) ? wp_kses_post($_POST['content']) : '';
-    
-    // Save to user meta
-    $user_id = get_current_user_id();
-    $updated = update_user_meta($user_id, 'snn_edu_dashboard_notepad_content', $content);
-    
-    if ($updated !== false) {
-        wp_send_json_success('Notes saved successfully');
-    } else {
-        wp_send_json_error('Failed to save notes');
-    }
-}
-add_action('wp_ajax_snn_edu_save_dashboard_notepad', 'snn_edu_save_dashboard_notepad_ajax');
-
-/**
- * ==========================================
  * FEATURE 4: Custom Role-Based Author Permalinks (ID-based)
  * ==========================================
  */
@@ -347,14 +232,6 @@ function snn_edu_register_settings() {
     );
     
     add_settings_field(
-        'enable_dashboard_notepad',
-        'Enable Dashboard Notepad Widget',
-        'snn_edu_dashboard_notepad_callback',
-        'snn-edu-utilities',
-        'snn_edu_main_section'
-    );
-    
-    add_settings_field(
         'enable_custom_author_urls',
         'Enable Custom Author Permalinks',
         'snn_edu_custom_author_urls_callback',
@@ -384,13 +261,6 @@ function snn_edu_admin_bar_restriction_callback() {
     echo '<p class="description">Hides the WordPress admin bar for non-administrators.</p>';
 }
 
-function snn_edu_dashboard_notepad_callback() {
-    $options = get_option('snn_edu_settings', array());
-    $checked = isset($options['enable_dashboard_notepad']) && $options['enable_dashboard_notepad'] ? 'checked' : '';
-    echo '<input type="checkbox" name="snn_edu_settings[enable_dashboard_notepad]" value="1" ' . $checked . '>';
-    echo '<p class="description">Adds a notepad widget to the WordPress dashboard for users with edit_posts capability.</p>';
-}
-
 function snn_edu_custom_author_urls_callback() {
     $options = get_option('snn_edu_settings', array());
     $checked = isset($options['enable_custom_author_urls']) && $options['enable_custom_author_urls'] ? 'checked' : '';
@@ -404,7 +274,6 @@ function snn_edu_sanitize_settings($input) {
     
     $sanitized['enable_admin_restriction'] = isset($input['enable_admin_restriction']) ? 1 : 0;
     $sanitized['enable_admin_bar_restriction'] = isset($input['enable_admin_bar_restriction']) ? 1 : 0;
-    $sanitized['enable_dashboard_notepad'] = isset($input['enable_dashboard_notepad']) ? 1 : 0;
     $sanitized['enable_custom_author_urls'] = isset($input['enable_custom_author_urls']) ? 1 : 0;
     
     // Flush rewrite rules if custom author URLs setting changed
@@ -449,10 +318,7 @@ function snn_edu_settings_page_html() {
             <h3>👁️ Hide Admin Bar for Non-Admins</h3>
             <p>Removes the WordPress admin bar from the front-end for users who don't have the 'manage_options' capability.</p>
             
-            <h3>📝 Dashboard Notepad Widget</h3>
-            <p>Adds a personal notepad to each user's dashboard. Notes are saved per-user using AJAX and TinyMCE editor.</p>
-            
-            <h3>🔗 Custom Author Permalinks</h3>
+            <h3> Custom Author Permalinks</h3>
             <p>Changes author archive URLs to use numeric IDs instead of usernames:</p>
             <ul style="list-style: disc; margin-left: 20px;">
                 <li>Regular users: <code>/user/123</code></li>
