@@ -430,6 +430,93 @@ function snn_edu_comment_rating_admin_css() {
 add_action('admin_head', 'snn_edu_comment_rating_admin_css');
 
 /**
+ * Add metabox to comment edit screen for rating field
+ */
+function snn_edu_add_comment_rating_metabox() {
+    if (!snn_edu_get_option('enable_comment_ratings', false)) {
+        return;
+    }
+    
+    add_meta_box(
+        'snn_comment_rating_metabox',
+        'Comment Rating',
+        'snn_edu_comment_rating_metabox_html',
+        'comment',
+        'normal',
+        'high'
+    );
+}
+add_action('add_meta_boxes_comment', 'snn_edu_add_comment_rating_metabox');
+
+/**
+ * Display the metabox content
+ */
+function snn_edu_comment_rating_metabox_html($comment) {
+    $rating = get_comment_meta($comment->comment_ID, 'snn_rating_comment', true);
+    $rating = !empty($rating) ? intval($rating) : 0;
+    
+    wp_nonce_field('snn_comment_rating_metabox', 'snn_comment_rating_nonce', false);
+    ?>
+    <p>
+        <label for="snn_rating_comment">Rating (0-5):</label><br>
+        <select name="snn_rating_comment" id="snn_rating_comment" style="width: 100%; max-width: 200px;">
+            <option value="0" <?php selected($rating, 0); ?>>0 - No Rating</option>
+            <option value="1" <?php selected($rating, 1); ?>>1 Star</option>
+            <option value="2" <?php selected($rating, 2); ?>>2 Stars</option>
+            <option value="3" <?php selected($rating, 3); ?>>3 Stars</option>
+            <option value="4" <?php selected($rating, 4); ?>>4 Stars</option>
+            <option value="5" <?php selected($rating, 5); ?>>5 Stars</option>
+        </select>
+    </p>
+    <p class="description">Select the star rating for this comment (stored in the <code>snn_rating_comment</code> custom field).</p>
+    
+    <style>
+        #snn_comment_rating_metabox {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+        }
+        #snn_comment_rating_metabox h2 {
+            background: #2271b1;
+            color: #fff;
+            margin: 0;
+            padding: 12px;
+        }
+        #snn_comment_rating_metabox .inside {
+            padding: 15px;
+        }
+    </style>
+    <?php
+}
+
+/**
+ * Save the rating when comment is updated
+ */
+function snn_edu_save_comment_rating_metabox($comment_id) {
+    if (!snn_edu_get_option('enable_comment_ratings', false)) {
+        return;
+    }
+    
+    // Verify nonce
+    if (!isset($_POST['snn_comment_rating_nonce']) || 
+        !wp_verify_nonce($_POST['snn_comment_rating_nonce'], 'snn_comment_rating_metabox')) {
+        return;
+    }
+    
+    // Check if user has permission to edit comments
+    if (!current_user_can('edit_comment', $comment_id)) {
+        return;
+    }
+    
+    // Save the rating
+    if (isset($_POST['snn_rating_comment'])) {
+        $rating = intval($_POST['snn_rating_comment']);
+        $rating = max(0, min(5, $rating)); // Ensure rating is between 0 and 5
+        update_comment_meta($comment_id, 'snn_rating_comment', $rating);
+    }
+}
+add_action('edit_comment', 'snn_edu_save_comment_rating_metabox');
+
+/**
  * ==========================================
  * FEATURE 7: Average Comment Rating Shortcode
  * ==========================================
