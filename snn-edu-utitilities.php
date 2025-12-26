@@ -345,6 +345,91 @@ add_shortcode('snn_course_total_hour_minutes_videos', 'snn_edu_total_video_durat
 
 /**
  * ==========================================
+ * FEATURE 6: Comment Ratings Column
+ * ==========================================
+ */
+
+/**
+ * Add custom column to comments list
+ */
+function snn_edu_add_comment_rating_column($columns) {
+    if (!snn_edu_get_option('enable_comment_ratings', false)) {
+        return $columns;
+    }
+    
+    $new_columns = array();
+    foreach ($columns as $key => $value) {
+        $new_columns[$key] = $value;
+        // Add rating column after author column
+        if ($key === 'author') {
+            $new_columns['snn_rating'] = 'Rating';
+        }
+    }
+    return $new_columns;
+}
+add_filter('manage_edit-comments_columns', 'snn_edu_add_comment_rating_column');
+
+/**
+ * Display rating stars in the custom column
+ */
+function snn_edu_display_comment_rating_column($column, $comment_id) {
+    if (!snn_edu_get_option('enable_comment_ratings', false)) {
+        return;
+    }
+    
+    if ($column === 'snn_rating') {
+        $rating = get_comment_meta($comment_id, 'snn_rating_comment', true);
+        $rating = intval($rating);
+        
+        // Ensure rating is between 0 and 5
+        $rating = max(0, min(5, $rating));
+        
+        echo '<div class="snn-comment-rating">';
+        for ($i = 1; $i <= 5; $i++) {
+            if ($i <= $rating) {
+                echo '<span class="snn-star snn-star-filled">★</span>';
+            } else {
+                echo '<span class="snn-star snn-star-empty">★</span>';
+            }
+        }
+        echo '</div>';
+    }
+}
+add_action('manage_comments_custom_column', 'snn_edu_display_comment_rating_column', 10, 2);
+
+/**
+ * Add CSS for rating stars in admin
+ */
+function snn_edu_comment_rating_admin_css() {
+    if (!snn_edu_get_option('enable_comment_ratings', false)) {
+        return;
+    }
+    
+    $screen = get_current_screen();
+    if ($screen && $screen->id === 'edit-comments') {
+        echo '<style>
+            .snn-comment-rating {
+                font-size: 16px;
+                line-height: 1;
+                white-space: nowrap;
+            }
+            .snn-star {
+                display: inline-block;
+                margin-right: 2px;
+            }
+            .snn-star-filled {
+                color: #ffc107;
+            }
+            .snn-star-empty {
+                color: #ccc;
+            }
+        </style>';
+    }
+}
+add_action('admin_head', 'snn_edu_comment_rating_admin_css');
+
+/**
+ * ==========================================
  * SETTINGS PAGE
  * ==========================================
  */
@@ -395,6 +480,14 @@ function snn_edu_register_settings() {
         'snn-edu-utilities',
         'snn_edu_main_section'
     );
+    
+    add_settings_field(
+        'enable_comment_ratings',
+        'Show Comment Ratings Column',
+        'snn_edu_comment_ratings_callback',
+        'snn-edu-utilities',
+        'snn_edu_main_section'
+    );
 }
 add_action('admin_init', 'snn_edu_register_settings');
 
@@ -425,6 +518,13 @@ function snn_edu_custom_author_urls_callback() {
     echo '<p class="description">Changes author URLs to /user/ID or /instructor/ID based on user role. <strong>Flush permalinks after enabling/disabling.</strong></p>';
 }
 
+function snn_edu_comment_ratings_callback() {
+    $options = get_option('snn_edu_settings', array());
+    $checked = isset($options['enable_comment_ratings']) && $options['enable_comment_ratings'] ? 'checked' : '';
+    echo '<input type="checkbox" name="snn_edu_settings[enable_comment_ratings]" value="1" ' . $checked . '>';
+    echo '<p class="description">Displays a star rating column in the comments list based on the <code>snn_rating_comment</code> custom field. Shows 5 stars total with filled (yellow) and empty (gray) stars.</p>';
+}
+
 // Sanitize settings
 function snn_edu_sanitize_settings($input) {
     $sanitized = array();
@@ -432,6 +532,7 @@ function snn_edu_sanitize_settings($input) {
     $sanitized['enable_admin_restriction'] = isset($input['enable_admin_restriction']) ? 1 : 0;
     $sanitized['enable_admin_bar_restriction'] = isset($input['enable_admin_bar_restriction']) ? 1 : 0;
     $sanitized['enable_custom_author_urls'] = isset($input['enable_custom_author_urls']) ? 1 : 0;
+    $sanitized['enable_comment_ratings'] = isset($input['enable_comment_ratings']) ? 1 : 0;
     
     // Flush rewrite rules if custom author URLs setting changed
     if (isset($input['enable_custom_author_urls']) != snn_edu_get_option('enable_custom_author_urls')) {
@@ -513,6 +614,14 @@ function snn_edu_settings_page_html() {
                 <li>Old <code>/author/</code> URLs automatically redirect to the new format</li>
             </ul>
             <p><strong>Important:</strong> After enabling or disabling this feature, go to <a href="<?php echo admin_url('options-permalink.php'); ?>">Settings → Permalinks</a> and click "Save Changes" to flush rewrite rules.</p>
+            
+            <h3>⭐ Comment Ratings Column</h3>
+            <p>Adds a rating column to the comments list in wp-admin that displays star ratings based on the <code>snn_rating_comment</code> custom field:</p>
+            <ul style="list-style: disc; margin-left: 20px;">
+                <li>Reads integer values (1-5) from the <code>snn_rating_comment</code> comment meta field</li>
+                <li>Displays 5 stars total: filled stars (yellow) for the rating value, empty stars (gray) for the remainder</li>
+                <li>Example: A rating of 3 shows ★★★☆☆ (3 yellow, 2 gray)</li>
+            </ul>
         </div>
         
         <hr>
