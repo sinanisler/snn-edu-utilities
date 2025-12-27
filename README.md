@@ -5,5 +5,5 @@
 </a>
 <br><br>
 
-Educational utilities WordPress plugin including admin restrictions, dashboard notepad, and custom author permalinks.
+A WordPress plugin designed for educational websites that provides essential utilities for managing user access, content organization, and course metrics.
 
