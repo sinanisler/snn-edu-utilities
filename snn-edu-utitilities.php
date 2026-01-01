@@ -188,163 +188,6 @@ add_action('template_redirect', 'snn_edu_enforce_author_base', 10);
 
 /**
  * ==========================================
- * FEATURE 5: Video Duration Shortcodes
- * ==========================================
- */
-
-/**
- * Get video duration from attachment ID
- */
-function snn_edu_get_video_duration($attachment_id) {
-    if (empty($attachment_id)) {
-        return 0;
-    }
-    
-    // Get the attachment metadata
-    $metadata = wp_get_attachment_metadata($attachment_id);
-    
-    if (!empty($metadata['length'])) {
-        return (int) $metadata['length'];
-    }
-    
-    if (!empty($metadata['length_formatted'])) {
-        // Try to parse formatted time like "1:23:45"
-        $parts = explode(':', $metadata['length_formatted']);
-        $seconds = 0;
-        if (count($parts) == 3) {
-            $seconds = ($parts[0] * 3600) + ($parts[1] * 60) + $parts[2];
-        } elseif (count($parts) == 2) {
-            $seconds = ($parts[0] * 60) + $parts[1];
-        }
-        return $seconds;
-    }
-    
-    return 0;
-}
-
-/**
- * Format seconds to hours and minutes
- */
-function snn_edu_format_duration($total_seconds) {
-    $hours = floor($total_seconds / 3600);
-    $minutes = floor(($total_seconds % 3600) / 60);
-    
-    if ($hours > 0) {
-        return sprintf('%d hour%s %d minute%s', $hours, $hours > 1 ? 's' : '', $minutes, $minutes != 1 ? 's' : '');
-    } else {
-        return sprintf('%d minute%s', $minutes, $minutes != 1 ? 's' : '');
-    }
-}
-
-/**
- * Shortcode: Single video duration
- * Usage: [snn_course_single_hour_minutes_video field="video_field"]
- */
-function snn_edu_single_video_duration_shortcode($atts) {
-    // Parse shortcode attributes
-    $atts = shortcode_atts(array(
-        'field' => ''
-    ), $atts, 'snn_course_single_hour_minutes_video');
-    
-    $custom_field = trim($atts['field']);
-    
-    if (empty($custom_field)) {
-        return '<span class="snn-video-error">Error: No custom field specified</span>';
-    }
-    
-    // Get current post ID
-    $post_id = get_the_ID();
-    if (!$post_id) {
-        return '<span class="snn-video-error">Error: No post found</span>';
-    }
-    
-    // Get the attachment ID from custom field
-    $attachment_id = get_post_meta($post_id, $custom_field, true);
-    
-    if (empty($attachment_id)) {
-        return '<span class="snn-video-duration">0 minutes</span>';
-    }
-    
-    // Get video duration
-    $duration = snn_edu_get_video_duration($attachment_id);
-    
-    if ($duration == 0) {
-        return '<span class="snn-video-duration">0 minutes</span>';
-    }
-    
-    $formatted = snn_edu_format_duration($duration);
-    
-    return '<span class="snn-video-duration">' . esc_html($formatted) . '</span>';
-}
-
-/**
- * Shortcode: Total video duration from parent and children
- * Usage: [snn_course_total_hour_minutes_videos field="video_field"]
- */
-function snn_edu_total_video_duration_shortcode($atts) {
-    // Parse shortcode attributes
-    $atts = shortcode_atts(array(
-        'field' => ''
-    ), $atts, 'snn_course_total_hour_minutes_videos');
-    
-    $custom_field = trim($atts['field']);
-    
-    if (empty($custom_field)) {
-        return '<span class="snn-video-error">Error: No custom field specified</span>';
-    }
-    
-    // Get current post ID
-    $post_id = get_the_ID();
-    if (!$post_id) {
-        return '<span class="snn-video-error">Error: No post found</span>';
-    }
-    
-    $total_duration = 0;
-    $attachment_ids = array();
-    
-    // Get attachment ID from parent post
-    $parent_attachment = get_post_meta($post_id, $custom_field, true);
-    if (!empty($parent_attachment)) {
-        $attachment_ids[] = $parent_attachment;
-    }
-    
-    // Get all child posts
-    $child_posts = get_children(array(
-        'post_parent' => $post_id,
-        'post_type'   => get_post_type($post_id),
-        'post_status' => 'publish',
-        'numberposts' => -1
-    ));
-    
-    // Get attachment IDs from all child posts
-    foreach ($child_posts as $child) {
-        $child_attachment = get_post_meta($child->ID, $custom_field, true);
-        if (!empty($child_attachment)) {
-            $attachment_ids[] = $child_attachment;
-        }
-    }
-    
-    // Calculate total duration
-    foreach ($attachment_ids as $attachment_id) {
-        $duration = snn_edu_get_video_duration($attachment_id);
-        $total_duration += $duration;
-    }
-    
-    if ($total_duration == 0) {
-        return '<span class="snn-video-total-duration">0 minutes</span>';
-    }
-    
-    $formatted = snn_edu_format_duration($total_duration);
-    
-    return '<span class="snn-video-total-duration">' . esc_html($formatted) . '</span>';
-}
-
-// Register shortcodes
-add_shortcode('snn_course_single_hour_minutes_video', 'snn_edu_single_video_duration_shortcode');
-add_shortcode('snn_course_total_hour_minutes_videos', 'snn_edu_total_video_duration_shortcode');
-
-/**
- * ==========================================
  * FEATURE 6: Comment Ratings Column
  * ==========================================
  */
@@ -518,69 +361,6 @@ add_action('edit_comment', 'snn_edu_save_comment_rating_metabox');
 
 /**
  * ==========================================
- * FEATURE 7: Average Comment Rating Shortcode
- * ==========================================
- */
-
-/**
- * Shortcode: Calculate average rating from all comments on current post
- * Usage: [snn_rating_comment_total_average]
- */
-function snn_edu_average_comment_rating_shortcode($atts) {
-    // Get current post ID
-    $post_id = get_the_ID();
-    if (!$post_id) {
-        return '0';
-    }
-    
-    // Get all approved comments for this post
-    $comments = get_comments(array(
-        'post_id' => $post_id,
-        'status' => 'approve',
-        'type' => 'comment'
-    ));
-    
-    if (empty($comments)) {
-        return '0';
-    }
-    
-    $total_rating = 0;
-    $rating_count = 0;
-    
-    // Loop through comments and collect ratings
-    foreach ($comments as $comment) {
-        $rating = get_comment_meta($comment->comment_ID, 'snn_rating_comment', true);
-        
-        // Only count if rating exists and is a valid number
-        if (!empty($rating) && is_numeric($rating)) {
-            $total_rating += floatval($rating);
-            $rating_count++;
-        }
-    }
-    
-    // Calculate average
-    if ($rating_count == 0) {
-        return '0';
-    }
-    
-    $average = $total_rating / $rating_count;
-    
-    // Round to nearest 0.5
-    $average = round($average * 2) / 2;
-    
-    // Format the number (remove .0 for whole numbers)
-    if (floor($average) == $average) {
-        return number_format($average, 0);
-    } else {
-        return number_format($average, 1);
-    }
-}
-
-// Register shortcode
-add_shortcode('snn_rating_comment_total_average', 'snn_edu_average_comment_rating_shortcode');
-
-/**
- * ==========================================
  * SETTINGS PAGE
  * ==========================================
  */
@@ -715,47 +495,9 @@ function snn_edu_settings_page_html() {
             submit_button('Save Settings');
             ?>
         </form>
-        
+
         <hr>
-        
-        <div class="snn-edu-info-section">
-            <h2>Available Shortcodes</h2>
-            
-            <h3>🎬 Video Duration Shortcodes</h3>
-            
-            <h4>Single Video Duration</h4>
-            <p>Displays the duration of a video from the current post's custom field:</p>
-            <div class="snn-shortcode-box">
-                <code>[snn_course_single_hour_minutes_video field="your_custom_field_name"]</code>
-                <button class="button button-small snn-copy-btn" onclick="snnCopyToClipboard('[snn_course_single_hour_minutes_video field=&quot;your_custom_field_name&quot;]')">Copy</button>
-            </div>
-            <p class="description">Replace <code>your_custom_field_name</code> with your actual custom field name that stores the video attachment ID.</p>
-            
-            <h4>Total Course Duration</h4>
-            <p>Displays the combined duration of videos from parent post and all child posts:</p>
-            <div class="snn-shortcode-box">
-                <code>[snn_course_total_hour_minutes_videos field="your_custom_field_name"]</code>
-                <button class="button button-small snn-copy-btn" onclick="snnCopyToClipboard('[snn_course_total_hour_minutes_videos field=&quot;your_custom_field_name&quot;]')">Copy</button>
-            </div>
-            <p class="description">Use this on parent/course pages to show total duration of all lessons. Replace <code>your_custom_field_name</code> with your actual custom field name.</p>
-            
-            <h4>Example Usage:</h4>
-            <ul style="list-style: disc; margin-left: 20px;">
-                <li>If your custom field is named <code>lesson_video</code>, use: <code>[snn_course_single_hour_minutes_video field="lesson_video"]</code></li>
-                <li>If your custom field is named <code>course_video</code>, use: <code>[snn_course_total_hour_minutes_videos field="course_video"]</code></li>
-            </ul>
-            
-            <h3>⭐ Average Comment Rating</h3>
-            <p>Displays the average rating from all comments on the current post:</p>
-            <div class="snn-shortcode-box">
-                <code>[snn_rating_comment_total_average]</code>
-                <button class="button button-small snn-copy-btn" onclick="snnCopyToClipboard('[snn_rating_comment_total_average]')">Copy</button>
-            </div>
-            <p class="description">Reads the <code>snn_rating_comment</code> custom field from all approved comments, calculates the average, and outputs a number (e.g., 3, 4.5, 2.5). Returns 0 if no ratings exist.</p>
-        </div>
-        
-        <hr>
-        
+
         <div class="snn-edu-info-section">
             <h2>Feature Information</h2>
             
@@ -801,36 +543,11 @@ function snn_edu_settings_page_html() {
             margin-top: 15px;
             margin-bottom: 5px;
         }
-        .snn-edu-info-section h4 {
-            margin-top: 12px;
-            margin-bottom: 8px;
-            color: #1d2327;
-        }
         .snn-edu-info-section code {
             background: #fff;
             padding: 2px 6px;
             border-radius: 3px;
             border: 1px solid #ddd;
-        }
-        .snn-shortcode-box {
-            background: #fff;
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            margin: 10px 0;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .snn-shortcode-box code {
-            font-size: 14px;
-            flex: 1;
-            background: transparent;
-            border: none;
-            padding: 0;
-        }
-        .snn-copy-btn {
-            margin-left: 15px;
         }
         .snn-edu-footer {
             text-align: center;
@@ -838,46 +555,6 @@ function snn_edu_settings_page_html() {
             margin-top: 30px;
         }
     </style>
-    
-    <script>
-        function snnCopyToClipboard(text) {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(text).then(function() {
-                    // Show success feedback
-                    var btn = event.target;
-                    var originalText = btn.textContent;
-                    btn.textContent = 'Copied!';
-                    btn.style.background = '#00a32a';
-                    btn.style.borderColor = '#00a32a';
-                    btn.style.color = '#fff';
-                    
-                    setTimeout(function() {
-                        btn.textContent = originalText;
-                        btn.style.background = '';
-                        btn.style.borderColor = '';
-                        btn.style.color = '';
-                    }, 2000);
-                }).catch(function(err) {
-                    alert('Failed to copy: ' + err);
-                });
-            } else {
-                // Fallback for older browsers
-                var textArea = document.createElement('textarea');
-                textArea.value = text;
-                textArea.style.position = 'fixed';
-                textArea.style.left = '-999999px';
-                document.body.appendChild(textArea);
-                textArea.select();
-                try {
-                    document.execCommand('copy');
-                    alert('Shortcode copied to clipboard!');
-                } catch (err) {
-                    alert('Failed to copy shortcode');
-                }
-                document.body.removeChild(textArea);
-            }
-        }
-    </script>
     <?php
 }
 
