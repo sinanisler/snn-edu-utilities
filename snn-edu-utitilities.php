@@ -432,28 +432,39 @@ function snn_edu_admin_restriction_callback() {
     $options = get_option('snn_edu_settings', array());
     $checked = isset($options['enable_admin_restriction']) && $options['enable_admin_restriction'] ? 'checked' : '';
     echo '<input type="checkbox" name="snn_edu_settings[enable_admin_restriction]" value="1" ' . $checked . '>';
-    echo '<p class="description">Prevents non-administrators from accessing wp-admin area.</p>';
+    echo '<p class="description">Redirects non-administrator users away from the wp-admin area to the home page. AJAX requests are not affected.</p>';
 }
 
 function snn_edu_admin_bar_restriction_callback() {
     $options = get_option('snn_edu_settings', array());
     $checked = isset($options['enable_admin_bar_restriction']) && $options['enable_admin_bar_restriction'] ? 'checked' : '';
     echo '<input type="checkbox" name="snn_edu_settings[enable_admin_bar_restriction]" value="1" ' . $checked . '>';
-    echo '<p class="description">Hides the WordPress admin bar for non-administrators.</p>';
+    echo '<p class="description">Removes the WordPress admin bar from the front-end for users who don\'t have the \'manage_options\' capability.</p>';
 }
 
 function snn_edu_custom_author_urls_callback() {
     $options = get_option('snn_edu_settings', array());
     $checked = isset($options['enable_custom_author_urls']) && $options['enable_custom_author_urls'] ? 'checked' : '';
     echo '<input type="checkbox" name="snn_edu_settings[enable_custom_author_urls]" value="1" ' . $checked . '>';
-    echo '<p class="description">Changes author URLs to /user/ID or /instructor/ID based on user role. <strong>Flush permalinks after enabling/disabling.</strong></p>';
+    echo '<p class="description">Changes author archive URLs to use numeric IDs instead of usernames:</p>';
+    echo '<ul style="list-style: disc; margin-left: 20px;">';
+    echo '<li>Regular users: <code>/user/123</code></li>';
+    echo '<li>Instructors: <code>/instructor/456</code></li>';
+    echo '<li>Old <code>/author/</code> URLs automatically redirect to the new format</li>';
+    echo '</ul>';
+    echo '<p class="description"><strong>Important:</strong> After enabling or disabling this feature, go to <a href="' . admin_url('options-permalink.php') . '">Settings → Permalinks</a> and click "Save Changes" to flush rewrite rules.</p>';
 }
 
 function snn_edu_comment_ratings_callback() {
     $options = get_option('snn_edu_settings', array());
     $checked = isset($options['enable_comment_ratings']) && $options['enable_comment_ratings'] ? 'checked' : '';
     echo '<input type="checkbox" name="snn_edu_settings[enable_comment_ratings]" value="1" ' . $checked . '>';
-    echo '<p class="description">Displays a star rating column in the comments list based on the <code>snn_rating_comment</code> custom field. Shows 5 stars total with filled (yellow) and empty (gray) stars.</p>';
+    echo '<p class="description">Adds a rating column to the comments list in wp-admin that displays star ratings based on the <code>snn_rating_comment</code> custom field:</p>';
+    echo '<ul style="list-style: disc; margin-left: 20px;">';
+    echo '<li>Reads integer values (1-5) from the <code>snn_rating_comment</code> comment meta field</li>';
+    echo '<li>Displays 5 stars total: filled stars (yellow) for the rating value, empty stars (gray) for the remainder</li>';
+    echo '<li>Example: A rating of 3 shows ★★★☆☆ (3 yellow, 2 gray)</li>';
+    echo '</ul>';
 }
 
 // Sanitize settings
@@ -498,57 +509,12 @@ function snn_edu_settings_page_html() {
 
         <hr>
 
-        <div class="snn-edu-info-section">
-            <h2>Feature Information</h2>
-            
-            <h3>🔒 Restrict wp-admin to Administrators</h3>
-            <p>Redirects non-administrator users away from the wp-admin area to the home page. AJAX requests are not affected.</p>
-            
-            <h3>👁️ Hide Admin Bar for Non-Admins</h3>
-            <p>Removes the WordPress admin bar from the front-end for users who don't have the 'manage_options' capability.</p>
-            
-            <h3>🔗 Custom Author Permalinks</h3>
-            <p>Changes author archive URLs to use numeric IDs instead of usernames:</p>
-            <ul style="list-style: disc; margin-left: 20px;">
-                <li>Regular users: <code>/user/123</code></li>
-                <li>Instructors: <code>/instructor/456</code></li>
-                <li>Old <code>/author/</code> URLs automatically redirect to the new format</li>
-            </ul>
-            <p><strong>Important:</strong> After enabling or disabling this feature, go to <a href="<?php echo admin_url('options-permalink.php'); ?>">Settings → Permalinks</a> and click "Save Changes" to flush rewrite rules.</p>
-            
-            <h3>⭐ Comment Ratings Column</h3>
-            <p>Adds a rating column to the comments list in wp-admin that displays star ratings based on the <code>snn_rating_comment</code> custom field:</p>
-            <ul style="list-style: disc; margin-left: 20px;">
-                <li>Reads integer values (1-5) from the <code>snn_rating_comment</code> comment meta field</li>
-                <li>Displays 5 stars total: filled stars (yellow) for the rating value, empty stars (gray) for the remainder</li>
-                <li>Example: A rating of 3 shows ★★★☆☆ (3 yellow, 2 gray)</li>
-            </ul>
-        </div>
-        
-        <hr>
-        
         <div class="snn-edu-footer">
             <p><strong>SNN Edu Utilities</strong> v<?php echo SNN_EDU_VERSION; ?> | By <a href="https://sinanisler.com" target="_blank">sinanisler</a> | <a href="https://github.com/sinanisler/snn-edu-utilities" target="_blank">GitHub</a></p>
         </div>
     </div>
-    
+
     <style>
-        .snn-edu-info-section {
-            background: #f9f9f9;
-            padding: 20px;
-            border-left: 4px solid #2271b1;
-            margin-top: 20px;
-        }
-        .snn-edu-info-section h3 {
-            margin-top: 15px;
-            margin-bottom: 5px;
-        }
-        .snn-edu-info-section code {
-            background: #fff;
-            padding: 2px 6px;
-            border-radius: 3px;
-            border: 1px solid #ddd;
-        }
         .snn-edu-footer {
             text-align: center;
             color: #666;
