@@ -1,5 +1,5 @@
 <?php   
-/** 
+/**  
  * Plugin Name: SNN Edu Utilities
  * Plugin URI: https://github.com/sinanisler/snn-edu-utilities
  * Description: Educational utilities including admin restrictions, dashboard notepad, and custom author permalinks with role-based URLs.
