@@ -509,9 +509,6 @@ function snn_edu_settings_page_html() {
 
         <hr>
 
-        <div class="snn-edu-footer">
-            <p><strong>SNN Edu Utilities</strong> v<?php echo SNN_EDU_VERSION; ?> | By <a href="https://sinanisler.com" target="_blank">sinanisler</a> | <a href="https://github.com/sinanisler/snn-edu-utilities" target="_blank">GitHub</a></p>
-        </div>
     </div>
 
     <style>
