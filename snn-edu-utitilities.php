@@ -1102,24 +1102,6 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
     </div>
 
     <style>
-        .snn-edu-tracker {
-            padding: 15px;
-            background: #f0f9ff;
-            border-left: 4px solid #0284c7;
-            margin: 15px 0;
-            border-radius: 4px;
-        }
-        .snn-edu-tracker-status {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 14px;
-            color: #0c4a6e;
-            margin-bottom: <?php echo $is_debug ? '15px' : '0'; ?>;
-        }
-        .snn-edu-tracker-icon {
-            font-size: 18px;
-        }
         .snn-edu-login-required {
             padding: 10px 15px;
             background: #fef3c7;
