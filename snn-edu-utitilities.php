@@ -484,7 +484,9 @@ function snn_edu_user_meta_tracking_callback() {
     echo '<li><strong>REST API Endpoints:</strong> <code>/wp-json/snn-edu/v1/enroll</code>, <code>/wp-json/snn-edu/v1/unenroll</code>, <code>/wp-json/snn-edu/v1/enrollments</code></li>';
     echo '<li><strong>User Meta Field:</strong> Stores enrolled post IDs in <code>snn_edu_enrolled_posts</code> as an array</li>';
     echo '<li><strong>Shortcode:</strong> Use <code>[snn_video_tracker]</code> to auto-enroll users when video events fire</li>';
-    echo '<li><strong>JavaScript Events:</strong> Listens to <code>snn_video_started</code> and <code>snn_video_completed</code> custom events</li>';
+    echo '<li><strong>Shortcode Parameters:</strong> <code>events="both|started|completed"</code> (default: both), <code>post_id="123"</code> (optional), <code>debug="true|false"</code></li>';
+    echo '<li><strong>JavaScript Events:</strong> Listens to <code>snn_video_started</code> and/or <code>snn_video_completed</code> custom events (both by default)</li>';
+    echo '<li><strong>Post ID Detection:</strong> Automatically gets the correct post ID from video events, works with parent/child page hierarchies</li>';
     echo '<li><strong>Admin Meta Box:</strong> View enrolled courses in user profile edit page</li>';
     echo '<li><strong>Security:</strong> Only works for logged-in users, sanitizes all post IDs (integers only)</li>';
     echo '</ul>';
@@ -1011,12 +1013,21 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
     }
 
     $atts = shortcode_atts(array(
-        'event' => 'completed', // 'started' or 'completed'
+        'post_id' => '', // Allow manual post ID override
         'auto' => 'true', // Auto-enroll on event
         'debug' => 'false', // Enable debug mode
+        'events' => 'both', // 'started', 'completed', or 'both'
     ), $atts);
 
-    $post_id = get_the_ID();
+    // Get post ID - priority: shortcode attribute > queried object > current post
+    $post_id = !empty($atts['post_id']) ? intval($atts['post_id']) : get_the_ID();
+
+    // Try to get the actual queried object ID (works better with child pages)
+    $queried_object = get_queried_object();
+    if ($queried_object && isset($queried_object->ID)) {
+        $post_id = $queried_object->ID;
+    }
+
     $user_id = get_current_user_id();
     $is_debug = ($atts['debug'] === 'true');
 
@@ -1031,7 +1042,7 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
     ?>
     <div class="snn-edu-tracker"
          data-post-id="<?php echo esc_attr($post_id); ?>"
-         data-event="<?php echo esc_attr($atts['event']); ?>"
+         data-events="<?php echo esc_attr($atts['events']); ?>"
          data-auto="<?php echo esc_attr($atts['auto']); ?>"
          data-debug="<?php echo esc_attr($atts['debug']); ?>">
 
@@ -1047,9 +1058,12 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
             <div class="snn-edu-debug-info">
                 <strong>Configuration:</strong>
                 <ul>
-                    <li>Post ID: <code><?php echo $post_id; ?></code></li>
+                    <li>Current Post ID: <code><?php echo $post_id; ?></code></li>
+                    <li>get_the_ID(): <code><?php echo get_the_ID(); ?></code></li>
+                    <li>Queried Object ID: <code><?php echo isset($queried_object->ID) ? $queried_object->ID : 'N/A'; ?></code></li>
+                    <li>Current URL: <code><?php echo esc_html($_SERVER['REQUEST_URI']); ?></code></li>
                     <li>User ID: <code><?php echo $user_id; ?></code></li>
-                    <li>Event Type: <code><?php echo esc_html($atts['event']); ?></code></li>
+                    <li>Events Tracking: <code><?php echo esc_html($atts['events']); ?></code></li>
                     <li>Auto-enroll: <code><?php echo esc_html($atts['auto']); ?></code></li>
                     <li>Currently Enrolled: <code><?php echo $is_enrolled ? 'YES' : 'NO'; ?></code></li>
                     <li>Total Enrollments: <code><?php echo count($current_enrollments); ?></code></li>
@@ -1066,8 +1080,11 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
                 <button onclick="snnEduTestGetEnrollments()" class="snn-debug-btn">
                     Get All Enrollments
                 </button>
-                <button onclick="snnEduTestFireEvent(<?php echo $post_id; ?>)" class="snn-debug-btn">
-                    Fire Test Event (<?php echo esc_html($atts['event']); ?>)
+                <button onclick="snnEduTestFireEvent(<?php echo $post_id; ?>, 'started')" class="snn-debug-btn">
+                    🟢 Fire "started" Event
+                </button>
+                <button onclick="snnEduTestFireEvent(<?php echo $post_id; ?>, 'completed')" class="snn-debug-btn">
+                    🔵 Fire "completed" Event
                 </button>
             </div>
 
@@ -1231,7 +1248,7 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
                 return;
             }
 
-            const event = tracker.dataset.event;
+            const eventsMode = tracker.dataset.events || 'both';
             const auto = tracker.dataset.auto === 'true';
             const postId = parseInt(tracker.dataset.postId);
             const isDebug = tracker.dataset.debug === 'true';
@@ -1261,8 +1278,13 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
 
             if (isDebug) {
                 debugLog('Tracker initialized for post ID: <?php echo $post_id; ?>', 'success');
-                debugLog('Event type: ' + event + ', Auto-enroll: ' + auto, 'info');
-                debugLog('Listening for custom event: ' + (event === 'started' ? 'snn_video_started' : 'snn_video_completed'), 'info');
+                debugLog('Events mode: ' + eventsMode + ', Auto-enroll: ' + auto, 'info');
+
+                let listeningEvents = [];
+                if (eventsMode === 'both' || eventsMode === 'started') listeningEvents.push('snn_video_started');
+                if (eventsMode === 'both' || eventsMode === 'completed') listeningEvents.push('snn_video_completed');
+
+                debugLog('Listening for events: ' + listeningEvents.join(', '), 'info');
             }
 
             // Test functions
@@ -1287,8 +1309,8 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
                 });
             };
 
-            window.snnEduTestFireEvent = function(testPostId) {
-                const eventName = event === 'started' ? 'snn_video_started' : 'snn_video_completed';
+            window.snnEduTestFireEvent = function(testPostId, eventType) {
+                const eventName = eventType === 'started' ? 'snn_video_started' : 'snn_video_completed';
                 debugLog('Manual test: Firing custom event "' + eventName + '" for post ' + testPostId, 'warning');
 
                 const customEvent = new CustomEvent(eventName, {
@@ -1300,23 +1322,34 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
             };
 
             if (auto) {
-                // Listen for the appropriate video event
-                const eventName = event === 'started' ? 'snn_video_started' : 'snn_video_completed';
-
-                document.addEventListener(eventName, function(e) {
-                    if (isDebug) {
-                        debugLog('Event "' + eventName + '" received! Event detail: ' + JSON.stringify(e.detail), 'warning');
-                        debugLog('Event post_id: ' + e.detail.post_id + ', Current post_id: <?php echo $post_id; ?>', 'info');
-                    }
-
-                    // Only track if the event is for this post
-                    if (e.detail && e.detail.post_id == <?php echo $post_id; ?>) {
+                // Function to handle enrollment for an event
+                function handleVideoEvent(eventName) {
+                    document.addEventListener(eventName, function(e) {
                         if (isDebug) {
-                            debugLog('Post ID matches! Attempting to enroll...', 'success');
+                            debugLog('Event "' + eventName + '" received! Event detail: ' + JSON.stringify(e.detail), 'warning');
                         }
 
+                        // Get post ID from event detail (this is the correct child page ID)
+                        const eventPostId = e.detail && e.detail.post_id ? parseInt(e.detail.post_id) : null;
+
+                        if (!eventPostId) {
+                            if (isDebug) {
+                                debugLog('No post_id in event detail - ignoring', 'error');
+                            }
+                            return;
+                        }
+
+                        if (isDebug) {
+                            debugLog('Event post_id: ' + eventPostId, 'info');
+                        }
+
+                        // Enroll using the post ID from the event (not the shortcode's post ID)
                         if (typeof snnEduEnrollUser !== 'undefined') {
-                            snnEduEnrollUser(<?php echo $post_id; ?>).then(response => {
+                            if (isDebug) {
+                                debugLog('Attempting to enroll in post ' + eventPostId + '...', 'success');
+                            }
+
+                            snnEduEnrollUser(eventPostId).then(response => {
                                 if (isDebug) {
                                     debugLog('Enrollment attempt completed: ' + JSON.stringify(response), response.success ? 'success' : 'warning');
                                 }
@@ -1330,15 +1363,20 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
                                 debugLog('ERROR: snnEduEnrollUser function not found!', 'error');
                             }
                         }
-                    } else {
-                        if (isDebug) {
-                            debugLog('Post ID mismatch - ignoring event', 'info');
-                        }
-                    }
-                });
+                    });
+                }
+
+                // Listen to both events based on eventsMode setting
+                if (eventsMode === 'both' || eventsMode === 'started') {
+                    handleVideoEvent('snn_video_started');
+                }
+
+                if (eventsMode === 'both' || eventsMode === 'completed') {
+                    handleVideoEvent('snn_video_completed');
+                }
 
                 if (isDebug) {
-                    debugLog('Event listener registered successfully', 'success');
+                    debugLog('Event listeners registered successfully', 'success');
                 }
             }
         })();
