@@ -585,15 +585,10 @@ register_deactivation_hook(__FILE__, 'snn_edu_deactivate');
  * Register REST API routes for user enrollment tracking
  */
 function snn_edu_user_meta_register_routes() {
-    // Only register if feature is enabled
-    if (!snn_edu_get_option('enable_user_meta_tracking', false)) {
-        return;
-    }
-
     register_rest_route('snn-edu/v1', '/enroll', array(
         'methods' => 'POST',
         'callback' => 'snn_edu_user_meta_enroll_user',
-        'permission_callback' => 'snn_edu_user_meta_check_logged_in',
+        'permission_callback' => 'snn_edu_user_meta_check_permission',
         'args' => array(
             'post_id' => array(
                 'required' => true,
@@ -608,7 +603,7 @@ function snn_edu_user_meta_register_routes() {
     register_rest_route('snn-edu/v1', '/unenroll', array(
         'methods' => 'POST',
         'callback' => 'snn_edu_user_meta_unenroll_user',
-        'permission_callback' => 'snn_edu_user_meta_check_logged_in',
+        'permission_callback' => 'snn_edu_user_meta_check_permission',
         'args' => array(
             'post_id' => array(
                 'required' => true,
@@ -623,16 +618,34 @@ function snn_edu_user_meta_register_routes() {
     register_rest_route('snn-edu/v1', '/enrollments', array(
         'methods' => 'GET',
         'callback' => 'snn_edu_user_meta_get_enrollments',
-        'permission_callback' => 'snn_edu_user_meta_check_logged_in',
+        'permission_callback' => 'snn_edu_user_meta_check_permission',
     ));
 }
 add_action('rest_api_init', 'snn_edu_user_meta_register_routes');
 
 /**
- * Permission callback - check if user is logged in
+ * Permission callback - check if feature is enabled and user is logged in
  */
-function snn_edu_user_meta_check_logged_in() {
-    return is_user_logged_in();
+function snn_edu_user_meta_check_permission() {
+    // Check if feature is enabled
+    if (!snn_edu_get_option('enable_user_meta_tracking', false)) {
+        return new WP_Error(
+            'feature_disabled',
+            'Video enrollment tracking feature is not enabled. Please enable it in Settings → SNN Edu Utilities.',
+            array('status' => 403)
+        );
+    }
+
+    // Check if user is logged in
+    if (!is_user_logged_in()) {
+        return new WP_Error(
+            'not_logged_in',
+            'You must be logged in to use this feature.',
+            array('status' => 401)
+        );
+    }
+
+    return true;
 }
 
 /**
