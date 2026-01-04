@@ -1051,10 +1051,7 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
          data-auto="<?php echo esc_attr($atts['auto']); ?>"
          data-debug="<?php echo esc_attr($atts['debug']); ?>">
 
-        <div class="snn-edu-tracker-status">
-            <span class="snn-edu-tracker-icon">📊</span>
-            <span class="snn-edu-tracker-text">Video tracking active</span>
-        </div>
+        
 
         <?php if ($is_debug): ?>
         <div class="snn-edu-debug-panel">
