@@ -999,7 +999,7 @@ add_action('wp_footer', 'snn_edu_user_meta_inline_script');
 
 /**
  * Shortcode to enable video enrollment tracking
- * Usage: [snn_video_tracker]
+ * Usage: [snn_video_tracker] or [snn_video_tracker debug="true"]
  */
 function snn_edu_user_meta_tracker_shortcode($atts) {
     if (!snn_edu_get_option('enable_user_meta_tracking', false)) {
@@ -1013,22 +1013,80 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
     $atts = shortcode_atts(array(
         'event' => 'completed', // 'started' or 'completed'
         'auto' => 'true', // Auto-enroll on event
+        'debug' => 'false', // Enable debug mode
     ), $atts);
 
     $post_id = get_the_ID();
+    $user_id = get_current_user_id();
+    $is_debug = ($atts['debug'] === 'true');
+
+    // Get current enrollments for debug display
+    $current_enrollments = get_user_meta($user_id, 'snn_edu_enrolled_posts', true);
+    if (!is_array($current_enrollments)) {
+        $current_enrollments = array();
+    }
+    $is_enrolled = in_array($post_id, $current_enrollments);
 
     ob_start();
     ?>
-    <div class="snn-edu-tracker" data-post-id="<?php echo esc_attr($post_id); ?>" data-event="<?php echo esc_attr($atts['event']); ?>" data-auto="<?php echo esc_attr($atts['auto']); ?>">
+    <div class="snn-edu-tracker"
+         data-post-id="<?php echo esc_attr($post_id); ?>"
+         data-event="<?php echo esc_attr($atts['event']); ?>"
+         data-auto="<?php echo esc_attr($atts['auto']); ?>"
+         data-debug="<?php echo esc_attr($atts['debug']); ?>">
+
         <div class="snn-edu-tracker-status">
             <span class="snn-edu-tracker-icon">📊</span>
             <span class="snn-edu-tracker-text">Video tracking active</span>
         </div>
+
+        <?php if ($is_debug): ?>
+        <div class="snn-edu-debug-panel">
+            <div class="snn-edu-debug-header">🔍 Debug Mode</div>
+
+            <div class="snn-edu-debug-info">
+                <strong>Configuration:</strong>
+                <ul>
+                    <li>Post ID: <code><?php echo $post_id; ?></code></li>
+                    <li>User ID: <code><?php echo $user_id; ?></code></li>
+                    <li>Event Type: <code><?php echo esc_html($atts['event']); ?></code></li>
+                    <li>Auto-enroll: <code><?php echo esc_html($atts['auto']); ?></code></li>
+                    <li>Currently Enrolled: <code><?php echo $is_enrolled ? 'YES' : 'NO'; ?></code></li>
+                    <li>Total Enrollments: <code><?php echo count($current_enrollments); ?></code></li>
+                </ul>
+            </div>
+
+            <div class="snn-edu-debug-buttons">
+                <button onclick="snnEduTestEnroll(<?php echo $post_id; ?>)" class="snn-debug-btn">
+                    Test Enroll (POST ID: <?php echo $post_id; ?>)
+                </button>
+                <button onclick="snnEduTestUnenroll(<?php echo $post_id; ?>)" class="snn-debug-btn">
+                    Test Unenroll
+                </button>
+                <button onclick="snnEduTestGetEnrollments()" class="snn-debug-btn">
+                    Get All Enrollments
+                </button>
+                <button onclick="snnEduTestFireEvent(<?php echo $post_id; ?>)" class="snn-debug-btn">
+                    Fire Test Event (<?php echo esc_html($atts['event']); ?>)
+                </button>
+            </div>
+
+            <div class="snn-edu-debug-log">
+                <div class="snn-edu-debug-log-header">
+                    <strong>Event Log:</strong>
+                    <button onclick="document.getElementById('snn-debug-log-<?php echo $post_id; ?>').innerHTML = '';" class="snn-debug-clear-btn">Clear</button>
+                </div>
+                <div id="snn-debug-log-<?php echo $post_id; ?>" class="snn-edu-debug-log-content">
+                    <div class="snn-debug-log-item snn-debug-info">Waiting for events...</div>
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
     </div>
 
     <style>
         .snn-edu-tracker {
-            padding: 10px 15px;
+            padding: 15px;
             background: #f0f9ff;
             border-left: 4px solid #0284c7;
             margin: 15px 0;
@@ -1040,6 +1098,7 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
             gap: 10px;
             font-size: 14px;
             color: #0c4a6e;
+            margin-bottom: <?php echo $is_debug ? '15px' : '0'; ?>;
         }
         .snn-edu-tracker-icon {
             font-size: 18px;
@@ -1052,30 +1111,235 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
             border-radius: 4px;
             color: #92400e;
         }
+
+        /* Debug Panel Styles */
+        .snn-edu-debug-panel {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .snn-edu-debug-header {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #fbbf24;
+            border-bottom: 2px solid #374151;
+            padding-bottom: 5px;
+        }
+        .snn-edu-debug-info ul {
+            margin: 10px 0;
+            padding-left: 20px;
+            list-style: none;
+        }
+        .snn-edu-debug-info li {
+            margin: 5px 0;
+            color: #cbd5e1;
+        }
+        .snn-edu-debug-info code {
+            background: #374151;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #fbbf24;
+        }
+        .snn-edu-debug-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 15px 0;
+        }
+        .snn-debug-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+        .snn-debug-btn:hover {
+            background: #2563eb;
+        }
+        .snn-edu-debug-log {
+            margin-top: 15px;
+        }
+        .snn-edu-debug-log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #374151;
+        }
+        .snn-debug-clear-btn {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+        .snn-debug-clear-btn:hover {
+            background: #dc2626;
+        }
+        .snn-edu-debug-log-content {
+            background: #0f172a;
+            padding: 10px;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .snn-debug-log-item {
+            margin: 5px 0;
+            padding: 5px 8px;
+            border-left: 3px solid #64748b;
+            background: #1e293b;
+        }
+        .snn-debug-success {
+            border-left-color: #10b981;
+            background: #064e3b;
+        }
+        .snn-debug-error {
+            border-left-color: #ef4444;
+            background: #7f1d1d;
+        }
+        .snn-debug-info {
+            border-left-color: #3b82f6;
+            background: #1e3a8a;
+        }
+        .snn-debug-warning {
+            border-left-color: #f59e0b;
+            background: #78350f;
+        }
+        .snn-debug-timestamp {
+            color: #64748b;
+            font-size: 11px;
+            margin-right: 8px;
+        }
     </style>
 
     <script>
         // Initialize tracker for this shortcode instance
         (function() {
             const tracker = document.querySelector('.snn-edu-tracker[data-post-id="<?php echo esc_js($post_id); ?>"]');
-            if (!tracker) return;
-            
+            if (!tracker) {
+                console.error('SNN Edu: Tracker element not found!');
+                return;
+            }
+
             const event = tracker.dataset.event;
             const auto = tracker.dataset.auto === 'true';
-            const postId = tracker.dataset.postId;
+            const postId = parseInt(tracker.dataset.postId);
+            const isDebug = tracker.dataset.debug === 'true';
+
+            // Debug logging function
+            function debugLog(message, type = 'info') {
+                const timestamp = new Date().toLocaleTimeString();
+                const logContainer = document.getElementById('snn-debug-log-<?php echo $post_id; ?>');
+
+                if (logContainer) {
+                    const logItem = document.createElement('div');
+                    logItem.className = 'snn-debug-log-item snn-debug-' + type;
+                    logItem.innerHTML = '<span class="snn-debug-timestamp">[' + timestamp + ']</span>' + message;
+                    logContainer.appendChild(logItem);
+                    logContainer.scrollTop = logContainer.scrollHeight;
+                }
+
+                // Also log to console
+                const emoji = {
+                    'success': '✅',
+                    'error': '❌',
+                    'warning': '⚠️',
+                    'info': 'ℹ️'
+                };
+                console.log((emoji[type] || '') + ' SNN Edu Debug:', message);
+            }
+
+            if (isDebug) {
+                debugLog('Tracker initialized for post ID: <?php echo $post_id; ?>', 'success');
+                debugLog('Event type: ' + event + ', Auto-enroll: ' + auto, 'info');
+                debugLog('Listening for custom event: ' + (event === 'started' ? 'snn_video_started' : 'snn_video_completed'), 'info');
+            }
+
+            // Test functions
+            window.snnEduTestEnroll = function(testPostId) {
+                debugLog('Manual test: Enrolling in post ' + testPostId, 'info');
+                snnEduEnrollUser(testPostId).then(response => {
+                    debugLog('Enroll response: ' + JSON.stringify(response), response.success ? 'success' : 'error');
+                });
+            };
+
+            window.snnEduTestUnenroll = function(testPostId) {
+                debugLog('Manual test: Unenrolling from post ' + testPostId, 'info');
+                snnEduUnenrollUser(testPostId).then(response => {
+                    debugLog('Unenroll response: ' + JSON.stringify(response), response.success ? 'success' : 'error');
+                });
+            };
+
+            window.snnEduTestGetEnrollments = function() {
+                debugLog('Manual test: Getting all enrollments', 'info');
+                snnEduGetEnrollments().then(response => {
+                    debugLog('Enrollments: ' + JSON.stringify(response.enrollments), 'success');
+                });
+            };
+
+            window.snnEduTestFireEvent = function(testPostId) {
+                const eventName = event === 'started' ? 'snn_video_started' : 'snn_video_completed';
+                debugLog('Manual test: Firing custom event "' + eventName + '" for post ' + testPostId, 'warning');
+
+                const customEvent = new CustomEvent(eventName, {
+                    detail: { post_id: testPostId }
+                });
+                document.dispatchEvent(customEvent);
+
+                debugLog('Event dispatched successfully', 'success');
+            };
 
             if (auto) {
                 // Listen for the appropriate video event
                 const eventName = event === 'started' ? 'snn_video_started' : 'snn_video_completed';
 
                 document.addEventListener(eventName, function(e) {
+                    if (isDebug) {
+                        debugLog('Event "' + eventName + '" received! Event detail: ' + JSON.stringify(e.detail), 'warning');
+                        debugLog('Event post_id: ' + e.detail.post_id + ', Current post_id: <?php echo $post_id; ?>', 'info');
+                    }
+
                     // Only track if the event is for this post
-                    if (e.detail.post_id == postId) {
+                    if (e.detail && e.detail.post_id == <?php echo $post_id; ?>) {
+                        if (isDebug) {
+                            debugLog('Post ID matches! Attempting to enroll...', 'success');
+                        }
+
                         if (typeof snnEduEnrollUser !== 'undefined') {
-                            snnEduEnrollUser(postId);
+                            snnEduEnrollUser(<?php echo $post_id; ?>).then(response => {
+                                if (isDebug) {
+                                    debugLog('Enrollment attempt completed: ' + JSON.stringify(response), response.success ? 'success' : 'warning');
+                                }
+                            }).catch(error => {
+                                if (isDebug) {
+                                    debugLog('Enrollment failed: ' + error, 'error');
+                                }
+                            });
+                        } else {
+                            if (isDebug) {
+                                debugLog('ERROR: snnEduEnrollUser function not found!', 'error');
+                            }
+                        }
+                    } else {
+                        if (isDebug) {
+                            debugLog('Post ID mismatch - ignoring event', 'info');
                         }
                     }
                 });
+
+                if (isDebug) {
+                    debugLog('Event listener registered successfully', 'success');
+                }
             }
         })();
     </script>
