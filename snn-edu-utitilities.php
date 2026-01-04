@@ -1019,13 +1019,18 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
         'events' => 'both', // 'started', 'completed', or 'both'
     ), $atts);
 
-    // Get post ID - priority: shortcode attribute > queried object > current post
-    $post_id = !empty($atts['post_id']) ? intval($atts['post_id']) : get_the_ID();
-
-    // Try to get the actual queried object ID (works better with child pages)
+    // Get post ID - priority: shortcode attribute > queried object ONLY
     $queried_object = get_queried_object();
-    if ($queried_object && isset($queried_object->ID)) {
+
+    if (!empty($atts['post_id'])) {
+        // Manual override via shortcode attribute
+        $post_id = intval($atts['post_id']);
+    } elseif ($queried_object && isset($queried_object->ID)) {
+        // Use queried object ID (works correctly with child pages)
         $post_id = $queried_object->ID;
+    } else {
+        // Fallback - should rarely happen
+        $post_id = 0;
     }
 
     $user_id = get_current_user_id();
