@@ -1063,9 +1063,7 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
             <div class="snn-edu-debug-info">
                 <strong>Configuration:</strong>
                 <ul>
-                    <li>Current Post ID: <code><?php echo $post_id; ?></code></li>
-                    <li>get_the_ID(): <code><?php echo get_the_ID(); ?></code></li>
-                    <li>Queried Object ID: <code><?php echo isset($queried_object->ID) ? $queried_object->ID : 'N/A'; ?></code></li>
+                    <li><strong>✅ Using Post ID:</strong> <code><?php echo $post_id; ?></code> (from Queried Object)</li>
                     <li>Current URL: <code><?php echo esc_html($_SERVER['REQUEST_URI']); ?></code></li>
                     <li>User ID: <code><?php echo $user_id; ?></code></li>
                     <li>Events Tracking: <code><?php echo esc_html($atts['events']); ?></code></li>
