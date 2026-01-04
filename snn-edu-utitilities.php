@@ -871,9 +871,9 @@ function snn_edu_user_meta_inline_script() {
         /**
          * Enroll user in a post via REST API
          */
-        window.snnEduEnrollUser = function(postId) {
+        window.snnEduEnrollUser = function(postId, debug = false) {
             if (!postId || !Number.isInteger(parseInt(postId))) {
-                console.error('SNN Edu: Invalid post ID', postId);
+                if (debug) console.error('SNN Edu: Invalid post ID', postId);
                 return Promise.reject('Invalid post ID');
             }
 
@@ -892,7 +892,7 @@ function snn_edu_user_meta_inline_script() {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    console.log('✅ SNN Edu: Successfully enrolled in post', postId);
+                    if (debug) console.log('✅ SNN Edu: Successfully enrolled in post', postId);
 
                     // Dispatch custom event for other scripts to listen
                     document.dispatchEvent(new CustomEvent('snn_edu_enrolled', {
@@ -902,12 +902,12 @@ function snn_edu_user_meta_inline_script() {
                         }
                     }));
                 } else {
-                    console.log('ℹ️ SNN Edu:', data.message, postId);
+                    if (debug) console.log('ℹ️ SNN Edu:', data.message, postId);
                 }
                 return data;
             })
             .catch(error => {
-                console.error('❌ SNN Edu: Enrollment failed', error);
+                if (debug) console.error('❌ SNN Edu: Enrollment failed', error);
                 return { success: false, error: error.message };
             });
         };
@@ -915,9 +915,9 @@ function snn_edu_user_meta_inline_script() {
         /**
          * Unenroll user from a post via REST API
          */
-        window.snnEduUnenrollUser = function(postId) {
+        window.snnEduUnenrollUser = function(postId, debug = false) {
             if (!postId || !Number.isInteger(parseInt(postId))) {
-                console.error('SNN Edu: Invalid post ID', postId);
+                if (debug) console.error('SNN Edu: Invalid post ID', postId);
                 return Promise.reject('Invalid post ID');
             }
 
@@ -936,7 +936,7 @@ function snn_edu_user_meta_inline_script() {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    console.log('✅ SNN Edu: Successfully unenrolled from post', postId);
+                    if (debug) console.log('✅ SNN Edu: Successfully unenrolled from post', postId);
 
                     // Dispatch custom event
                     document.dispatchEvent(new CustomEvent('snn_edu_unenrolled', {
@@ -946,12 +946,12 @@ function snn_edu_user_meta_inline_script() {
                         }
                     }));
                 } else {
-                    console.log('ℹ️ SNN Edu:', data.message, postId);
+                    if (debug) console.log('ℹ️ SNN Edu:', data.message, postId);
                 }
                 return data;
             })
             .catch(error => {
-                console.error('❌ SNN Edu: Unenrollment failed', error);
+                if (debug) console.error('❌ SNN Edu: Unenrollment failed', error);
                 return { success: false, error: error.message };
             });
         };
@@ -959,7 +959,7 @@ function snn_edu_user_meta_inline_script() {
         /**
          * Get all enrollments for current user
          */
-        window.snnEduGetEnrollments = function() {
+        window.snnEduGetEnrollments = function(debug = false) {
             return fetch(snnEduUserMeta.restUrl + 'enrollments', {
                 method: 'GET',
                 headers: {
@@ -968,11 +968,11 @@ function snn_edu_user_meta_inline_script() {
             })
             .then(response => response.json())
             .then(data => {
-                console.log('📚 SNN Edu: User enrollments', data);
+                if (debug) console.log('📚 SNN Edu: User enrollments', data);
                 return data;
             })
             .catch(error => {
-                console.error('❌ SNN Edu: Failed to get enrollments', error);
+                if (debug) console.error('❌ SNN Edu: Failed to get enrollments', error);
                 return { success: false, error: error.message };
             });
         };
@@ -980,8 +980,8 @@ function snn_edu_user_meta_inline_script() {
         /**
          * Check if user is enrolled in a specific post
          */
-        window.snnEduIsEnrolled = function(postId) {
-            return window.snnEduGetEnrollments()
+        window.snnEduIsEnrolled = function(postId, debug = false) {
+            return window.snnEduGetEnrollments(debug)
                 .then(data => {
                     if (data.success && data.enrollments) {
                         return data.enrollments.includes(parseInt(postId));
@@ -989,9 +989,6 @@ function snn_edu_user_meta_inline_script() {
                     return false;
                 });
         };
-
-        // Log initialization
-        console.log('🎓 SNN Edu User Meta Tracker initialized for user:', snnEduUserMeta.userId);
 
     })();
     </script>
@@ -1226,7 +1223,6 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
         (function() {
             const tracker = document.querySelector('.snn-edu-tracker[data-post-id="<?php echo esc_js($post_id); ?>"]');
             if (!tracker) {
-                console.error('SNN Edu: Tracker element not found!');
                 return;
             }
 
@@ -1272,21 +1268,21 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
             // Test functions
             window.snnEduTestEnroll = function(testPostId) {
                 debugLog('Manual test: Enrolling in post ' + testPostId, 'info');
-                snnEduEnrollUser(testPostId).then(response => {
+                snnEduEnrollUser(testPostId, true).then(response => {
                     debugLog('Enroll response: ' + JSON.stringify(response), response.success ? 'success' : 'error');
                 });
             };
 
             window.snnEduTestUnenroll = function(testPostId) {
                 debugLog('Manual test: Unenrolling from post ' + testPostId, 'info');
-                snnEduUnenrollUser(testPostId).then(response => {
+                snnEduUnenrollUser(testPostId, true).then(response => {
                     debugLog('Unenroll response: ' + JSON.stringify(response), response.success ? 'success' : 'error');
                 });
             };
 
             window.snnEduTestGetEnrollments = function() {
                 debugLog('Manual test: Getting all enrollments', 'info');
-                snnEduGetEnrollments().then(response => {
+                snnEduGetEnrollments(true).then(response => {
                     debugLog('Enrollments: ' + JSON.stringify(response.enrollments), 'success');
                 });
             };
@@ -1331,7 +1327,7 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
                                 debugLog('Attempting to enroll in post ' + eventPostId + '...', 'success');
                             }
 
-                            snnEduEnrollUser(eventPostId).then(response => {
+                            snnEduEnrollUser(eventPostId, isDebug).then(response => {
                                 if (isDebug) {
                                     debugLog('Enrollment attempt completed: ' + JSON.stringify(response), response.success ? 'success' : 'warning');
                                 }
