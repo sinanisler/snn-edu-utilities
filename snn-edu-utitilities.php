@@ -25,6 +25,9 @@ define('SNN_EDU_PLUGIN_FILE', __FILE__);
 // Include GitHub updater
 require_once SNN_EDU_PLUGIN_DIR . 'github-update.php';
 
+// Include User Meta tracking
+require_once SNN_EDU_PLUGIN_DIR . 'snn-edu-user-meta.php';
+
 // Get plugin options
 function snn_edu_get_option($option_name, $default = false) {
     $options = get_option('snn_edu_settings', array());
@@ -419,6 +422,14 @@ function snn_edu_register_settings() {
         'snn-edu-utilities',
         'snn_edu_main_section'
     );
+
+    add_settings_field(
+        'enable_user_meta_tracking',
+        'Enable User Video Enrollment Tracking',
+        'snn_edu_user_meta_tracking_callback',
+        'snn-edu-utilities',
+        'snn_edu_main_section'
+    );
 }
 add_action('admin_init', 'snn_edu_register_settings');
 
@@ -467,20 +478,54 @@ function snn_edu_comment_ratings_callback() {
     echo '</ul>';
 }
 
+function snn_edu_user_meta_tracking_callback() {
+    $options = get_option('snn_edu_settings', array());
+    $checked = isset($options['enable_user_meta_tracking']) && $options['enable_user_meta_tracking'] ? 'checked' : '';
+    echo '<input type="checkbox" name="snn_edu_settings[enable_user_meta_tracking]" value="1" ' . $checked . '>';
+    echo '<p class="description">Enables video enrollment tracking system that saves user progress to custom fields:</p>';
+    echo '<ul style="list-style: disc; margin-left: 20px;">';
+    echo '<li><strong>REST API Endpoints:</strong> <code>/wp-json/snn-edu/v1/enroll</code>, <code>/wp-json/snn-edu/v1/unenroll</code>, <code>/wp-json/snn-edu/v1/enrollments</code></li>';
+    echo '<li><strong>User Meta Field:</strong> Stores enrolled post IDs in <code>snn_edu_enrolled_posts</code> as an array</li>';
+    echo '<li><strong>Shortcode:</strong> Use <code>[snn_video_tracker]</code> to auto-enroll users when video events fire</li>';
+    echo '<li><strong>JavaScript Events:</strong> Listens to <code>snn_video_started</code> and <code>snn_video_completed</code> custom events</li>';
+    echo '<li><strong>Admin Meta Box:</strong> View enrolled courses in user profile edit page</li>';
+    echo '<li><strong>Security:</strong> Only works for logged-in users, sanitizes all post IDs (integers only)</li>';
+    echo '</ul>';
+    echo '<p class="description"><strong>JavaScript Usage Example:</strong></p>';
+    echo '<pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto;">
+// Listen for video completion event
+document.addEventListener(\'snn_video_completed\', function(event) {
+    const postId = event.detail.post_id;
+
+    // Automatically enroll user via REST API
+    snnEduEnrollUser(postId).then(response => {
+        console.log(\'User enrolled!\', response);
+    });
+});
+
+// Or manually enroll/unenroll
+snnEduEnrollUser(123);      // Enroll in post 123
+snnEduUnenrollUser(123);    // Unenroll from post 123
+snnEduGetEnrollments();     // Get all enrollments
+snnEduIsEnrolled(123);      // Check if enrolled
+</pre>';
+}
+
 // Sanitize settings
 function snn_edu_sanitize_settings($input) {
     $sanitized = array();
-    
+
     $sanitized['enable_admin_restriction'] = isset($input['enable_admin_restriction']) ? 1 : 0;
     $sanitized['enable_admin_bar_restriction'] = isset($input['enable_admin_bar_restriction']) ? 1 : 0;
     $sanitized['enable_custom_author_urls'] = isset($input['enable_custom_author_urls']) ? 1 : 0;
     $sanitized['enable_comment_ratings'] = isset($input['enable_comment_ratings']) ? 1 : 0;
-    
+    $sanitized['enable_user_meta_tracking'] = isset($input['enable_user_meta_tracking']) ? 1 : 0;
+
     // Flush rewrite rules if custom author URLs setting changed
     if (isset($input['enable_custom_author_urls']) != snn_edu_get_option('enable_custom_author_urls')) {
         flush_rewrite_rules();
     }
-    
+
     return $sanitized;
 }
 
