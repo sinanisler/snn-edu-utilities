@@ -115,11 +115,21 @@ function snn_calculate_course_enrollment_percentage() {
 
 // Helper function to get the top-level parent (level_0)
 function snn_get_top_level_parent( $post_id ) {
+    $current_post = get_post( $post_id );
+
+    if ( ! $current_post ) {
+        return $post_id;
+    }
+
     $parent_id = $post_id;
 
     // Keep traversing up until we reach the top parent
-    while ( $parent = get_post_parent( $parent_id ) ) {
-        $parent_id = $parent;
+    while ( $parent_post = get_post( $parent_id ) ) {
+        if ( $parent_post->post_parent ) {
+            $parent_id = $parent_post->post_parent;
+        } else {
+            break;
+        }
     }
 
     return $parent_id;
