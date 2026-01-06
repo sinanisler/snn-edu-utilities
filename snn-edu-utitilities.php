@@ -487,6 +487,7 @@ function snn_edu_user_meta_tracking_callback() {
     echo '<li><strong>Shortcode Parameters:</strong> <code>events="both|started|completed"</code> (default: both), <code>post_id="123"</code> (optional), <code>debug="true|false"</code></li>';
     echo '<li><strong>JavaScript Events:</strong> Listens to <code>snn_video_started</code> and/or <code>snn_video_completed</code> custom events (both by default)</li>';
     echo '<li><strong>Post ID Detection:</strong> Automatically gets the correct post ID from video events, works with parent/child page hierarchies</li>';
+    echo '<li><strong>Parent Enrollment:</strong> When enrolling in a child post, automatically enrolls in the top-level parent (level 0) as well</li>';
     echo '<li><strong>Admin Meta Box:</strong> View enrolled courses in user profile edit page</li>';
     echo '<li><strong>Security:</strong> Only works for logged-in users, sanitizes all post IDs (integers only)</li>';
     echo '</ul>';
@@ -652,13 +653,15 @@ function snn_edu_user_meta_check_permission() {
 
 /**
  * Enroll user in a post (add post_id to user meta)
+ * Also enrolls in top-level parent if current post has a parent
  */
 function snn_edu_user_meta_enroll_user($request) {
     $post_id = $request->get_param('post_id');
     $user_id = get_current_user_id();
 
     // Verify post exists
-    if (!get_post($post_id)) {
+    $post = get_post($post_id);
+    if (!$post) {
         return new WP_Error(
             'invalid_post',
             'Post does not exist',
@@ -672,16 +675,34 @@ function snn_edu_user_meta_enroll_user($request) {
         $enrollments = array();
     }
 
-    // Add post_id if not already enrolled
+    $enrolled_posts = array();
     $post_id_int = intval($post_id);
+
+    // Add current post_id if not already enrolled
     if (!in_array($post_id_int, $enrollments, true)) {
         $enrollments[] = $post_id_int;
+        $enrolled_posts[] = $post_id_int;
+    }
+
+    // Check if post has a parent and get top-level parent (level 0)
+    if ($post->post_parent > 0) {
+        $top_parent_id = snn_edu_get_top_level_parent($post->ID);
+
+        if ($top_parent_id && !in_array($top_parent_id, $enrollments, true)) {
+            $enrollments[] = $top_parent_id;
+            $enrolled_posts[] = $top_parent_id;
+        }
+    }
+
+    // Update user meta if any new enrollments were added
+    if (!empty($enrolled_posts)) {
         update_user_meta($user_id, 'snn_edu_enrolled_posts', $enrollments);
 
         return array(
             'success' => true,
             'message' => 'Successfully enrolled',
             'post_id' => $post_id_int,
+            'enrolled_posts' => $enrolled_posts,
             'enrolled_count' => count($enrollments),
         );
     }
@@ -691,6 +712,26 @@ function snn_edu_user_meta_enroll_user($request) {
         'message' => 'Already enrolled',
         'post_id' => $post_id_int,
     );
+}
+
+/**
+ * Get top-level parent (level 0) of a post
+ * Recursively traverses up the parent hierarchy
+ */
+function snn_edu_get_top_level_parent($post_id) {
+    $post = get_post($post_id);
+
+    if (!$post) {
+        return false;
+    }
+
+    // If post has no parent, it's already top-level
+    if ($post->post_parent == 0) {
+        return $post->ID;
+    }
+
+    // Recursively get parent until we reach top level
+    return snn_edu_get_top_level_parent($post->post_parent);
 }
 
 /**
@@ -1040,6 +1081,12 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
     }
     $is_enrolled = in_array($post_id, $current_enrollments);
 
+    // Get parent post info for debug display
+    $current_post = get_post($post_id);
+    $parent_id = $current_post ? $current_post->post_parent : 0;
+    $top_parent_id = ($parent_id > 0) ? snn_edu_get_top_level_parent($post_id) : 0;
+    $is_parent_enrolled = ($top_parent_id > 0) ? in_array($top_parent_id, $current_enrollments) : false;
+
     ob_start();
     ?>
     <div class="snn-edu-tracker"
@@ -1064,6 +1111,13 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
                     <li>Auto-enroll: <code><?php echo esc_html($atts['auto']); ?></code></li>
                     <li>Currently Enrolled: <code><?php echo $is_enrolled ? 'YES' : 'NO'; ?></code></li>
                     <li>Total Enrollments: <code><?php echo count($current_enrollments); ?></code></li>
+                    <?php if ($parent_id > 0): ?>
+                    <li><strong>🔗 Has Parent:</strong> <code>YES</code></li>
+                    <li><strong>📂 Top-Level Parent ID:</strong> <code><?php echo $top_parent_id; ?></code></li>
+                    <li><strong>Parent Enrolled:</strong> <code><?php echo $is_parent_enrolled ? 'YES' : 'NO'; ?></code></li>
+                    <?php else: ?>
+                    <li><strong>🔗 Has Parent:</strong> <code>NO</code> (This is a top-level post)</li>
+                    <?php endif; ?>
                 </ul>
             </div>
 
