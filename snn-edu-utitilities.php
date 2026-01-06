@@ -1191,8 +1191,11 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
     // Get parent post info for debug display
     $current_post = get_post($post_id);
     $parent_id = $current_post ? $current_post->post_parent : 0;
-    $top_parent_id = ($parent_id > 0) ? snn_edu_get_top_level_parent($post_id) : 0;
-    $is_parent_enrolled = ($top_parent_id > 0) ? in_array($top_parent_id, $current_enrollments) : false;
+    $all_ancestors = ($parent_id > 0) ? snn_edu_get_all_ancestors($post_id) : array();
+    $immediate_parent_id = !empty($all_ancestors) ? $all_ancestors[0] : 0;
+    $top_parent_id = !empty($all_ancestors) ? end($all_ancestors) : 0;
+    $is_immediate_parent_enrolled = ($immediate_parent_id > 0) ? in_array($immediate_parent_id, $current_enrollments) : false;
+    $is_top_parent_enrolled = ($top_parent_id > 0) ? in_array($top_parent_id, $current_enrollments) : false;
 
     // Get post type info for debug display
     $post_type = $current_post ? $current_post->post_type : 'unknown';
@@ -1242,8 +1245,16 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
                 <strong>Parent Hierarchy:</strong>
                 <ul>
                     <li><strong>🔗 Has Parent:</strong> <code>YES</code></li>
-                    <li><strong>📂 Top-Level Parent ID:</strong> <code><?php echo $top_parent_id; ?></code></li>
-                    <li><strong>Parent Enrolled:</strong> <code><?php echo $is_parent_enrolled ? 'YES' : 'NO'; ?></code></li>
+                    <li><strong>📊 Total Ancestors:</strong> <code><?php echo count($all_ancestors); ?></code></li>
+                    <li><strong>🔗 All Ancestor IDs:</strong> <code><?php echo implode(' → ', $all_ancestors); ?></code> (immediate parent → top-level)</li>
+                    <?php if ($immediate_parent_id > 0): ?>
+                    <li><strong>👉 Level_1 (Immediate Parent ID):</strong> <code><?php echo $immediate_parent_id; ?></code></li>
+                    <li><strong>Level_1 Enrolled:</strong> <code style="color: <?php echo $is_immediate_parent_enrolled ? '#10b981' : '#ef4444'; ?>;"><?php echo $is_immediate_parent_enrolled ? 'YES ✅' : 'NO ❌'; ?></code></li>
+                    <?php endif; ?>
+                    <?php if ($top_parent_id > 0): ?>
+                    <li><strong>📂 Level_0 (Top-Level Parent ID):</strong> <code><?php echo $top_parent_id; ?></code></li>
+                    <li><strong>Level_0 Enrolled:</strong> <code style="color: <?php echo $is_top_parent_enrolled ? '#10b981' : '#ef4444'; ?>;"><?php echo $is_top_parent_enrolled ? 'YES ✅' : 'NO ❌'; ?></code></li>
+                    <?php endif; ?>
                 </ul>
                 <?php else: ?>
                 <strong>Parent Hierarchy:</strong>
@@ -1455,7 +1466,11 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
             window.snnEduTestEnroll = function(testPostId) {
                 debugLog('Manual test: Enrolling in post ' + testPostId, 'info');
                 snnEduEnrollUser(testPostId, true).then(response => {
-                    debugLog('Enroll response: ' + JSON.stringify(response), response.success ? 'success' : 'error');
+                    if (response.enrolled_posts && response.enrolled_posts.length > 0) {
+                        debugLog('✅ Enrolled in posts: ' + JSON.stringify(response.enrolled_posts), 'success');
+                        debugLog('Total enrolled count: ' + response.enrolled_count, 'info');
+                    }
+                    debugLog('Full response: ' + JSON.stringify(response), response.success ? 'success' : 'warning');
                 });
             };
 
