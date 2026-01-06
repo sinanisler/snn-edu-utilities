@@ -1,9 +1,70 @@
 <?php
 /**
- * SNN Edu User Meta - Video Enrollment Tracking
+ * SNN Edu User Meta - Video Enrollment Tracking System
  *
- * Tracks user video completion and enrollment via REST API
- * Stores enrolled post IDs in user meta
+ * OVERVIEW:
+ * This module provides a complete video enrollment tracking system for WordPress.
+ * It allows logged-in users to enroll in courses/posts (typically video content)
+ * and tracks their enrollment status via WordPress user meta storage.
+ *
+ * HOW IT WORKS:
+ * 1. User watches a video on a post/page
+ * 2. JavaScript (snn-edu-user-meta-tracker.js) detects video events (started/completed)
+ * 3. JavaScript calls REST API endpoints to enroll/unenroll the user
+ * 4. Enrollment data (array of post IDs) is stored in user meta: 'snn_edu_enrolled_posts'
+ * 5. Admins can view user enrollments in the WordPress user profile editor
+ *
+ * MAIN COMPONENTS:
+ *
+ * A) REST API ENDPOINTS (for frontend JavaScript)
+ *    - POST /wp-json/snn-edu/v1/enroll       : Enroll user in a post
+ *    - POST /wp-json/snn-edu/v1/unenroll     : Unenroll user from a post
+ *    - GET  /wp-json/snn-edu/v1/enrollments  : Get all user's enrollments
+ *    All endpoints require user to be logged in (is_user_logged_in check)
+ *
+ * B) ADMIN INTERFACE
+ *    - Adds "Course Enrollments" meta box to user profile pages
+ *    - Displays table of enrolled posts with post ID, title, type, status
+ *    - Provides view/edit links for each enrolled post
+ *
+ * C) FRONTEND TRACKING
+ *    - Enqueues JavaScript tracker for logged-in users
+ *    - Passes REST API URL and nonce to JavaScript via wp_localize_script
+ *    - JavaScript handles automatic enrollment based on video events
+ *
+ * D) SHORTCODE: [snn_video_tracker]
+ *    - Embeds tracking functionality into posts/pages
+ *    - Attributes:
+ *      * event="completed|started" : Which video event triggers enrollment (default: completed)
+ *      * auto="true|false"         : Auto-enroll on event (default: true)
+ *    - Displays status indicator when active
+ *    - Listens for custom JavaScript events: 'snn_video_started' or 'snn_video_completed'
+ *
+ * DATA STORAGE:
+ * - User meta key: 'snn_edu_enrolled_posts'
+ * - Value: Array of post IDs (integers) that user is enrolled in
+ * - Example: array(123, 456, 789)
+ *
+ * FEATURE TOGGLE:
+ * - Entire module can be enabled/disabled via plugin settings
+ * - Setting key: 'enable_user_meta_tracking'
+ * - When disabled, no REST routes registered, no scripts enqueued, no admin boxes shown
+ *
+ * USAGE EXAMPLE:
+ * 1. Enable "User Meta Tracking" in plugin settings
+ * 2. Add [snn_video_tracker] shortcode to a post with video content
+ * 3. User watches video and gets auto-enrolled when video completes
+ * 4. View enrollments in WordPress admin under Users > Edit User > Course Enrollments
+ *
+ * INTEGRATION POINTS:
+ * - Requires: snn_edu_get_option() function for settings
+ * - Requires: SNN_EDU_PLUGIN_URL and SNN_EDU_VERSION constants
+ * - Requires: js/snn-edu-user-meta-tracker.js for frontend tracking
+ * - Triggers custom events that external JavaScript can listen for
+ *
+ * @package SNN_Edu_Utilities
+ * @subpackage User_Meta_Tracking
+ * @since 1.0.0
  */
 
 // Exit if accessed directly
