@@ -496,7 +496,7 @@ function snn_edu_user_meta_tracking_callback() {
     echo '<li><strong>Shortcode Parameters:</strong> <code>events="both|started|completed"</code> (default: both), <code>post_id="123"</code> (optional), <code>debug="true|false"</code></li>';
     echo '<li><strong>JavaScript Events:</strong> Listens to <code>snn_video_started</code> and/or <code>snn_video_completed</code> custom events (both by default)</li>';
     echo '<li><strong>Post ID Detection:</strong> Automatically gets the correct post ID from video events, works with parent/child page hierarchies</li>';
-    echo '<li><strong>Parent Enrollment:</strong> When enrolling in a child post, automatically enrolls in the top-level parent (level 0) as well</li>';
+    echo '<li><strong>Parent Enrollment:</strong> When enrolling in a child post, automatically enrolls in ALL ancestor parents (immediate parent, grandparent, etc. up to top-level)</li>';
     echo '<li><strong>Admin Meta Box:</strong> View enrolled courses in user profile edit page</li>';
     echo '<li><strong>Security:</strong> Only works for logged-in users, sanitizes all post IDs (integers only)</li>';
     echo '</ul>';
@@ -719,7 +719,7 @@ function snn_edu_user_meta_check_permission() {
 
 /**
  * Enroll user in a post (add post_id to user meta)
- * Also enrolls in top-level parent if current post has a parent
+ * Also enrolls in ALL ancestor parents (immediate parent, grandparent, etc. up to level 0)
  */
 function snn_edu_user_meta_enroll_user($request) {
     $post_id = $request->get_param('post_id');
@@ -759,13 +759,16 @@ function snn_edu_user_meta_enroll_user($request) {
         $enrolled_posts[] = $post_id_int;
     }
 
-    // Check if post has a parent and get top-level parent (level 0)
+    // Check if post has a parent and get ALL ancestor parents (not just top-level)
     if ($post->post_parent > 0) {
-        $top_parent_id = snn_edu_get_top_level_parent($post->ID);
+        $ancestor_ids = snn_edu_get_all_ancestors($post->ID);
 
-        if ($top_parent_id && !in_array($top_parent_id, $enrollments, true)) {
-            $enrollments[] = $top_parent_id;
-            $enrolled_posts[] = $top_parent_id;
+        // Enroll in all ancestors (immediate parent, grandparent, etc. up to level 0)
+        foreach ($ancestor_ids as $ancestor_id) {
+            if (!in_array($ancestor_id, $enrollments, true)) {
+                $enrollments[] = $ancestor_id;
+                $enrolled_posts[] = $ancestor_id;
+            }
         }
     }
 
@@ -807,6 +810,35 @@ function snn_edu_get_top_level_parent($post_id) {
 
     // Recursively get parent until we reach top level
     return snn_edu_get_top_level_parent($post->post_parent);
+}
+
+/**
+ * Get ALL ancestor IDs (all parent levels) of a post
+ * Returns array of parent IDs from immediate parent up to top-level (level 0)
+ * Example: If post hierarchy is Level0 > Level1 > Level2 (current), returns [Level1_ID, Level0_ID]
+ */
+function snn_edu_get_all_ancestors($post_id) {
+    $ancestors = array();
+    $current_post = get_post($post_id);
+
+    if (!$current_post) {
+        return $ancestors;
+    }
+
+    // Traverse up the parent hierarchy
+    while ($current_post->post_parent > 0) {
+        $parent_id = $current_post->post_parent;
+        $ancestors[] = $parent_id;
+
+        // Get the parent post to continue traversing
+        $current_post = get_post($parent_id);
+
+        if (!$current_post) {
+            break; // Safety check: stop if parent doesn't exist
+        }
+    }
+
+    return $ancestors;
 }
 
 /**
