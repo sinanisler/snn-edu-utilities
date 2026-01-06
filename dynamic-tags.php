@@ -3,7 +3,10 @@
  * Dynamic Tags for Bricks Builder
  */
 
-
+// Exit if Bricks Builder is not active
+if ( ! has_filter( 'bricks/dynamic_tags_list' ) ) {
+    return;
+}
 
 /**
  * Custom Dynamic Data Tag: Current Course Enrollment Percentage
