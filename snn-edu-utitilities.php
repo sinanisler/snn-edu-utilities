@@ -782,13 +782,15 @@ function snn_edu_user_meta_enroll_user($request) {
             'post_id' => $post_id_int,
             'enrolled_posts' => $enrolled_posts,
             'enrolled_count' => count($enrollments),
+            'all_enrollments' => $enrollments, // Debug: return all enrollments
         );
     }
 
     return array(
         'success' => false,
-        'message' => 'Already enrolled',
+        'message' => 'Already enrolled in all posts (current + ancestors)',
         'post_id' => $post_id_int,
+        'current_enrollments' => $enrollments, // Debug: show what user is already enrolled in
     );
 }
 
