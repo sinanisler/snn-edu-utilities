@@ -17,13 +17,13 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('SNN_EDU_VERSION', '1.0');
 define('SNN_EDU_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('SNN_EDU_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('SNN_EDU_PLUGIN_FILE', __FILE__);
 
 // Include GitHub updater
 require_once SNN_EDU_PLUGIN_DIR . 'github-update.php';
+require_once SNN_EDU_PLUGIN_DIR . 'simple-page-order.php';
 
 // Get plugin options
 function snn_edu_get_option($option_name, $default = false) {
