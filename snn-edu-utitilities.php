@@ -427,6 +427,14 @@ function snn_edu_register_settings() {
         'snn-edu-utilities',
         'snn_edu_main_section'
     );
+
+    add_settings_field(
+        'enrollment_allowed_post_types',
+        'Allowed Post Types for Enrollment',
+        'snn_edu_enrollment_post_types_callback',
+        'snn-edu-utilities',
+        'snn_edu_main_section'
+    );
 }
 add_action('admin_init', 'snn_edu_register_settings');
 
@@ -511,6 +519,41 @@ snnEduIsEnrolled(123);      // Check if enrolled
 </pre>';
 }
 
+function snn_edu_enrollment_post_types_callback() {
+    $options = get_option('snn_edu_settings', array());
+    $selected_post_types = isset($options['enrollment_allowed_post_types']) && is_array($options['enrollment_allowed_post_types'])
+        ? $options['enrollment_allowed_post_types']
+        : array();
+
+    // Get all public post types
+    $post_types = get_post_types(array('public' => true), 'objects');
+
+    echo '<div style="max-width: 600px;">';
+    echo '<p class="description" style="margin-bottom: 10px;">Select which post types can be enrolled. Only posts of these types will be allowed for enrollment tracking.</p>';
+
+    if (empty($post_types)) {
+        echo '<p><em>No public post types found.</em></p>';
+    } else {
+        echo '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 10px;">';
+
+        foreach ($post_types as $post_type) {
+            $checked = in_array($post_type->name, $selected_post_types) ? 'checked' : '';
+            echo '<label style="display: flex; align-items: center; padding: 8px; background: #f9f9f9; border-radius: 4px; cursor: pointer;">';
+            echo '<input type="checkbox" name="snn_edu_settings[enrollment_allowed_post_types][]" value="' . esc_attr($post_type->name) . '" ' . $checked . ' style="margin-right: 8px;">';
+            echo '<span style="font-weight: 500;">' . esc_html($post_type->label) . '</span>';
+            echo '<code style="margin-left: 5px; font-size: 11px; color: #666;">(' . esc_html($post_type->name) . ')</code>';
+            echo '</label>';
+        }
+
+        echo '</div>';
+    }
+
+    echo '<p class="description" style="margin-top: 15px; padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">';
+    echo '<strong>Note:</strong> If no post types are selected, enrollment will be allowed for <strong>all</strong> public post types. Select at least one to restrict enrollment to specific post types.';
+    echo '</p>';
+    echo '</div>';
+}
+
 // Sanitize settings
 function snn_edu_sanitize_settings($input) {
     $sanitized = array();
@@ -520,6 +563,13 @@ function snn_edu_sanitize_settings($input) {
     $sanitized['enable_custom_author_urls'] = isset($input['enable_custom_author_urls']) ? 1 : 0;
     $sanitized['enable_comment_ratings'] = isset($input['enable_comment_ratings']) ? 1 : 0;
     $sanitized['enable_user_meta_tracking'] = isset($input['enable_user_meta_tracking']) ? 1 : 0;
+
+    // Sanitize enrollment allowed post types
+    if (isset($input['enrollment_allowed_post_types']) && is_array($input['enrollment_allowed_post_types'])) {
+        $sanitized['enrollment_allowed_post_types'] = array_map('sanitize_key', $input['enrollment_allowed_post_types']);
+    } else {
+        $sanitized['enrollment_allowed_post_types'] = array();
+    }
 
     // Flush rewrite rules if custom author URLs setting changed
     if (isset($input['enable_custom_author_urls']) != snn_edu_get_option('enable_custom_author_urls')) {
@@ -583,6 +633,21 @@ register_deactivation_hook(__FILE__, 'snn_edu_deactivate');
  * FEATURE 7: USER META - VIDEO ENROLLMENT TRACKING
  * ==========================================
  */
+
+/**
+ * Check if a post type is allowed for enrollment
+ */
+function snn_edu_is_post_type_allowed($post_type) {
+    $allowed_post_types = snn_edu_get_option('enrollment_allowed_post_types', array());
+
+    // If no post types are selected, allow all public post types
+    if (empty($allowed_post_types)) {
+        return true;
+    }
+
+    // Check if the post type is in the allowed list
+    return in_array($post_type, $allowed_post_types, true);
+}
 
 /**
  * Register REST API routes for user enrollment tracking
@@ -666,6 +731,15 @@ function snn_edu_user_meta_enroll_user($request) {
             'invalid_post',
             'Post does not exist',
             array('status' => 404)
+        );
+    }
+
+    // Check if post type is allowed for enrollment
+    if (!snn_edu_is_post_type_allowed($post->post_type)) {
+        return new WP_Error(
+            'post_type_not_allowed',
+            'This post type is not allowed for enrollment. Please check the plugin settings.',
+            array('status' => 403)
         );
     }
 
@@ -1087,6 +1161,13 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
     $top_parent_id = ($parent_id > 0) ? snn_edu_get_top_level_parent($post_id) : 0;
     $is_parent_enrolled = ($top_parent_id > 0) ? in_array($top_parent_id, $current_enrollments) : false;
 
+    // Get post type info for debug display
+    $post_type = $current_post ? $current_post->post_type : 'unknown';
+    $post_type_obj = get_post_type_object($post_type);
+    $post_type_label = $post_type_obj ? $post_type_obj->label : $post_type;
+    $is_post_type_allowed = snn_edu_is_post_type_allowed($post_type);
+    $allowed_post_types = snn_edu_get_option('enrollment_allowed_post_types', array());
+
     ob_start();
     ?>
     <div class="snn-edu-tracker"
@@ -1111,14 +1192,32 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
                     <li>Auto-enroll: <code><?php echo esc_html($atts['auto']); ?></code></li>
                     <li>Currently Enrolled: <code><?php echo $is_enrolled ? 'YES' : 'NO'; ?></code></li>
                     <li>Total Enrollments: <code><?php echo count($current_enrollments); ?></code></li>
-                    <?php if ($parent_id > 0): ?>
+                </ul>
+
+                <strong>Post Type Information:</strong>
+                <ul>
+                    <li><strong>📝 Post Type:</strong> <code><?php echo esc_html($post_type_label); ?></code> <code style="color: #666;">(<?php echo esc_html($post_type); ?>)</code></li>
+                    <li><strong>✓ Allowed for Enrollment:</strong> <code style="color: <?php echo $is_post_type_allowed ? '#10b981' : '#ef4444'; ?>;"><?php echo $is_post_type_allowed ? 'YES' : 'NO'; ?></code></li>
+                    <?php if (!empty($allowed_post_types)): ?>
+                    <li><strong>Configured Allowed Types:</strong> <code><?php echo esc_html(implode(', ', $allowed_post_types)); ?></code></li>
+                    <?php else: ?>
+                    <li><strong>Configured Allowed Types:</strong> <code>All public post types</code></li>
+                    <?php endif; ?>
+                </ul>
+
+                <?php if ($parent_id > 0): ?>
+                <strong>Parent Hierarchy:</strong>
+                <ul>
                     <li><strong>🔗 Has Parent:</strong> <code>YES</code></li>
                     <li><strong>📂 Top-Level Parent ID:</strong> <code><?php echo $top_parent_id; ?></code></li>
                     <li><strong>Parent Enrolled:</strong> <code><?php echo $is_parent_enrolled ? 'YES' : 'NO'; ?></code></li>
-                    <?php else: ?>
-                    <li><strong>🔗 Has Parent:</strong> <code>NO</code> (This is a top-level post)</li>
-                    <?php endif; ?>
                 </ul>
+                <?php else: ?>
+                <strong>Parent Hierarchy:</strong>
+                <ul>
+                    <li><strong>🔗 Has Parent:</strong> <code>NO</code> (This is a top-level post)</li>
+                </ul>
+                <?php endif; ?>
             </div>
 
             <div class="snn-edu-debug-buttons">
