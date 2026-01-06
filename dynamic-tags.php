@@ -4,6 +4,9 @@
 /**
  * Custom Dynamic Data Tag: Current Course Enrollment Percentage
  * Returns the percentage of completed/enrolled posts for the current course
+ * 
+ * {get_current_course_enrollment_percentage}
+ * 
  */
 
 // Step 1: Register the tag in the builder
