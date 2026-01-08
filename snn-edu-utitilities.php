@@ -5,7 +5,7 @@
  * Description: Educational utilities including admin restrictions, dashboard notepad, and custom author permalinks with role-based URLs.
  * Version: 1.3
  * Author: sinanisler
- * Author URI: https://sinanisler.com
+ * Author URI: https://github.com/sinanisler
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: snn
