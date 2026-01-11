@@ -102,9 +102,9 @@ class SNN_EDU_Element_Comment_List extends Element {
 .snn-commentlist{list-style:none;margin:0;padding:0}
 .snn-comment-item{display:flex;align-items:flex-start;padding:25px 0;position:relative}
 .snn-comment-author{flex:0 0 120px;text-align:center;padding-right:15px}
-.snn-comment-author-avatar-link img{width:<?php echo esc_attr( $avatar ); ?>px;height:<?php echo esc_attr( $avatar ); ?>px;border-radius:5px;display:block;margin:0 auto}
-.snn-comment-author-name{display:block;margin-top:8px;font-weight:bold;color:#333}
-.snn-comment-metadata{font-size:12px;color:#999;margin-top:4px}
+.snn-comment-author-avatar-link{width:<?php echo esc_attr( $avatar ); ?>px;height:<?php echo esc_attr( $avatar ); ?>px;border-radius:5px;display:flex;align-items:center;justify-content:center;margin:0 auto;background:#f0f0f0;border:1px solid #ddd}
+.snn-comment-author-name{font-weight:bold;color:#333;font-size:20px}
+.snn-comment-metadata{font-size:12px;color:#999;margin-top:8px}
 .snn-comment-body{display:flex;gap:10px;width:100%}
 .snn-comment-content-wrapper{background:#f9f9f9;padding:12px;border-radius:6px;width:100%}
 .snn-comment-content{line-height:2}
@@ -162,9 +162,8 @@ img.snn-selected-image{outline:2px solid #0073aa;outline-offset:2px}
                 echo '<li class="snn-comment-item snn-comment-unapproved" id="comment-' . esc_attr($unapproved_comment->comment_ID) . '">';
                 echo '<comment class="snn-comment-body">';
                 echo '<div class="snn-comment-author snn-comment-vcard">';
-                echo get_avatar($unapproved_comment, $avatar);
                 $initials = snn_edu_get_user_initials($unapproved_comment->comment_author);
-                echo '<span class="snn-comment-author-name">' . esc_html($initials) . '</span>';
+                echo '<div class="snn-comment-author-avatar-link"><span class="snn-comment-author-name">' . esc_html($initials) . '</span></div>';
                 echo '<div class="snn-comment-metadata">';
                 echo '<time datetime="' . esc_attr(get_comment_time('c', true, $unapproved_comment)) . '">' .
                     esc_html(get_comment_date('', $unapproved_comment)) . ' at ' .
@@ -209,14 +208,12 @@ img.snn-selected-image{outline:2px solid #0073aa;outline-offset:2px}
             if ( $comment->user_id ) {
                 $u = get_userdata( $comment->user_id );
                 if ( $u ) {
-                    echo '<div class="snn-comment-author-avatar-link">' . get_avatar( $comment, $avatar_size ) . '</div>';
                     $initials = snn_edu_get_user_initials( $u->display_name );
-                    echo '<span class="snn-comment-author-name">' . esc_html( $initials ) . '</span>';
+                    echo '<div class="snn-comment-author-avatar-link"><span class="snn-comment-author-name">' . esc_html( $initials ) . '</span></div>';
                 }
             } else {
-                echo get_avatar( $comment, $avatar_size );
                 $initials = snn_edu_get_user_initials( get_comment_author( $comment ) );
-                echo '<span class="snn-comment-author-name">' . esc_html( $initials ) . '</span>';
+                echo '<div class="snn-comment-author-avatar-link"><span class="snn-comment-author-name">' . esc_html( $initials ) . '</span></div>';
             }
             ?>
             <div class="snn-comment-metadata">
