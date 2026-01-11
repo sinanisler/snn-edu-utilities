@@ -25,7 +25,13 @@ define('SNN_EDU_PLUGIN_FILE', __FILE__);
 require_once SNN_EDU_PLUGIN_DIR . 'github-update.php';
 require_once SNN_EDU_PLUGIN_DIR . 'simple-page-order.php';
 require_once SNN_EDU_PLUGIN_DIR . 'dynamic-tags.php';
-require_once SNN_EDU_PLUGIN_DIR . 'comment-list-custom.php';
+
+// Register Bricks custom element after theme is loaded
+add_action('init', function() {
+    if (class_exists('\Bricks\Elements')) {
+        \Bricks\Elements::register_element(SNN_EDU_PLUGIN_DIR . 'comment-list-custom.php');
+    }
+}, 11);
 
 // Get plugin options
 function snn_edu_get_option($option_name, $default = false) {
