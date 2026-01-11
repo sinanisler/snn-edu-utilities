@@ -120,7 +120,7 @@ class SNN_EDU_Element_Comment_List extends Element {
 .snn-comment-item:hover .snn-comment-edit-btn,.snn-comment-item:hover .snn-comment-delete-btn{display:block}
 .snn-comment-item.editing .snn-comment-save-btn,.snn-comment-item.editing .snn-comment-cancel-btn{display:block}
 .snn-comment-item.editing .snn-comment-edit-btn,.snn-comment-item.editing .snn-comment-delete-btn{display:none}
-.snn-comment-rating{margin-top:10px;font-size:18px;color:#ffc107}
+.snn-comment-rating{margin-top:10px;font-size:18px;}
 .snn-comment-rating span{margin-right:2px}
 img.snn-img-align-left{float:left;margin-right:10px;margin-bottom:10px}
 img.snn-img-align-right{float:right;margin-left:10px;margin-bottom:10px}
