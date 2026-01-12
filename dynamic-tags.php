@@ -20,14 +20,15 @@ function snn_add_course_enrollment_percentage_tag( $tags ) {
     return $tags;
 }
 
-// Step 2: Render the tag value
+// Step 2: Render the tag value (for individual tag parsing)
 add_filter( 'bricks/dynamic_data/render_tag', 'snn_get_course_enrollment_percentage_value', 20, 3 );
 function snn_get_course_enrollment_percentage_value( $tag, $post, $context = 'text' ) {
+    // Ensure $tag is a string
     if ( ! is_string( $tag ) ) {
         return $tag;
     }
 
-    // Clean the tag
+    // Clean the tag (remove curly braces)
     $clean_tag = str_replace( [ '{', '}' ], '', $tag );
 
     // Only process our specific tag
@@ -48,12 +49,15 @@ function snn_get_course_enrollment_percentage_value( $tag, $post, $context = 'te
     // Get the enrollment percentage
     $value = snn_calculate_course_enrollment_percentage( $post_id );
 
+    // Return based on context
+    // For image context, you would return an array of image IDs
+    // For text/other contexts, return the string value
     return $value;
 }
 
-// Step 3: Render in content
+// Step 3: Render in content (for content with multiple tags)
 add_filter( 'bricks/dynamic_data/render_content', 'snn_render_course_enrollment_percentage_tag', 20, 3 );
-add_filter( 'bricks/frontend/render_data', 'snn_render_course_enrollment_percentage_tag', 20, 2 );
+add_filter( 'bricks/frontend/render_data', 'snn_render_course_enrollment_percentage_tag', 20, 3 );
 function snn_render_course_enrollment_percentage_tag( $content, $post, $context = 'text' ) {
 
     // Only process if our tag exists in content
@@ -88,14 +92,14 @@ function snn_calculate_course_enrollment_percentage( $post_id = null ) {
     }
 
     if ( ! $post_id ) {
-        return '0% (No Post ID)';
+        return '0%';
     }
 
     // Get current user
     $current_user_id = get_current_user_id();
 
     if ( ! $current_user_id ) {
-        return '0% (Not Logged In)';
+        return '0%';
     }
 
     // Get user's enrolled posts
@@ -113,7 +117,7 @@ function snn_calculate_course_enrollment_percentage( $post_id = null ) {
 
     // Ensure it's an array and convert all values to integers
     if ( ! is_array( $enrolled_posts ) || empty( $enrolled_posts ) ) {
-        return '0% (No Enrolled Posts)';
+        return '0%';
     }
     
     // Convert all enrolled post IDs to integers
@@ -127,23 +131,13 @@ function snn_calculate_course_enrollment_percentage( $post_id = null ) {
     $all_course_posts = snn_get_all_course_posts( $top_parent_id );
 
     if ( empty( $all_course_posts ) ) {
-        return '0% (No Course Posts Found)';
+        return '0%';
     }
-
-    // Debug: Uncomment these lines to see what's being compared
-    // error_log( 'Current Post ID: ' . $post_id );
-    // error_log( 'Top Parent ID: ' . $top_parent_id );
-    // error_log( 'All Course Posts: ' . print_r( $all_course_posts, true ) );
-    // error_log( 'Enrolled Posts: ' . print_r( $enrolled_posts, true ) );
 
     // Calculate how many posts user has enrolled in
     $matched_posts = array_intersect( $enrolled_posts, $all_course_posts );
     $enrolled_count = count( $matched_posts );
     $total_count = count( $all_course_posts );
-
-    // Debug: Uncomment to see matched posts
-    // error_log( 'Matched Posts: ' . print_r( $matched_posts, true ) );
-    // error_log( 'Enrolled Count: ' . $enrolled_count . ' / Total: ' . $total_count );
 
     // Calculate percentage
     if ( $total_count > 0 ) {
