@@ -25,122 +25,6 @@ class Simple_Page_Ordering {
 		add_action( 'wp_ajax_simple_page_ordering', array( __CLASS__, 'ajax_simple_page_ordering' ) );
 		add_action( 'wp_ajax_reset_simple_page_ordering', array( __CLASS__, 'ajax_reset_simple_page_ordering' ) );
 		add_action( 'rest_api_init', array( __CLASS__, 'rest_api_init' ) );
-		add_action( 'post_action_spo-move-under-grandparent', array( __CLASS__, 'handle_move_under_grandparent' ) );
-		add_action( 'post_action_spo-move-under-sibling', array( __CLASS__, 'handle_move_under_sibling' ) );
-	}
-
-	public static function handle_move_under_grandparent( $post_id ) {
-		$post = get_post( $post_id );
-		if ( ! $post ) {
-			self::redirect_to_referer();
-		}
-
-		check_admin_referer( "simple-page-ordering-nonce-move-{$post->ID}", 'spo_nonce' );
-
-		if ( ! current_user_can( 'edit_post', $post->ID ) ) {
-			wp_die( 'You are not allowed to edit this item.' );
-		}
-
-		if ( 0 === $post->post_parent ) {
-			self::redirect_to_referer();
-		}
-
-		$ancestors = get_post_ancestors( $post );
-		$parent_id = ( 1 === count( $ancestors ) ) ? 0 : $ancestors[1];
-
-		wp_update_post( array(
-			'ID'          => $post->ID,
-			'post_parent' => $parent_id,
-		) );
-
-		self::redirect_to_referer();
-	}
-
-	public static function handle_move_under_sibling( $post_id ) {
-		$post = get_post( $post_id );
-		if ( ! $post ) {
-			self::redirect_to_referer();
-		}
-
-		check_admin_referer( "simple-page-ordering-nonce-move-{$post->ID}", 'spo_nonce' );
-
-		if ( ! current_user_can( 'edit_post', $post->ID ) ) {
-			wp_die( 'You are not allowed to edit this item.' );
-		}
-
-		list( 'top_level_pages' => $top_level_pages, 'children_pages' => $children_pages ) = self::get_walked_pages( $post->post_type );
-
-		$siblings = ( 0 === $post->post_parent ) ? $top_level_pages : ( $children_pages[ $post->post_parent ] ?? [] );
-		$filtered_siblings = wp_list_filter( $siblings, array( 'ID' => $post->ID ) );
-		
-		if ( empty( $filtered_siblings ) ) {
-			self::redirect_to_referer();
-		}
-
-		$key = array_key_first( $filtered_siblings );
-		if ( 0 === $key ) {
-			self::redirect_to_referer();
-		}
-
-		$previous_page_id = $siblings[ $key - 1 ]->ID;
-
-		wp_update_post( array(
-			'ID'          => $post->ID,
-			'post_parent' => $previous_page_id,
-		) );
-
-		self::redirect_to_referer();
-	}
-
-	public static function redirect_to_referer() {
-		global $post_type;
-		$send_back = wp_get_referer();
-		
-		if ( ! $send_back || str_contains( $send_back, 'post.php' ) || str_contains( $send_back, 'post-new.php' ) ) {
-			$send_back = ( 'attachment' === $post_type ) ? admin_url( 'upload.php' ) : admin_url( 'edit.php' );
-			if ( ! empty( $post_type ) ) {
-				$send_back = add_query_arg( 'post_type', $post_type, $send_back );
-			}
-		} else {
-			$send_back = remove_query_arg( array( 'trashed', 'untrashed', 'deleted', 'ids' ), $send_back );
-		}
-
-		wp_safe_redirect( $send_back );
-		exit;
-	}
-
-	public static function get_walked_pages( $post_type = 'page' ) {
-		global $wpdb;
-		$pages = get_pages( array(
-			'sort_column' => 'menu_order title',
-			'post_type'   => $post_type,
-		) );
-
-		$top_level_pages = array();
-		$children_pages  = array();
-		$bad_parents     = array();
-
-		foreach ( $pages as $page ) {
-			if ( $page->post_parent === $page->ID ) {
-				$page->post_parent = 0;
-				$wpdb->update( $wpdb->posts, array( 'post_parent' => 0 ), array( 'ID' => $page->ID ) );
-				clean_post_cache( $page );
-				$bad_parents[] = $page->ID;
-			}
-
-			if ( $page->post_parent > 0 ) {
-				$children_pages[ $page->post_parent ][] = $page;
-			} else {
-				$top_level_pages[] = $page;
-			}
-		}
-		
-		_prime_post_caches( $bad_parents, false, false );
-
-		return array(
-			'top_level_pages' => $top_level_pages,
-			'children_pages'  => $children_pages,
-		);
 	}
 
 	private static function is_post_type_sortable( $post_type = 'post' ) {
@@ -160,7 +44,6 @@ class Simple_Page_Ordering {
 		add_action( 'pre_get_posts', array( __CLASS__, 'filter_query' ) );
 		add_action( 'wp', array( __CLASS__, 'wp' ) );
 		add_action( 'admin_head', array( __CLASS__, 'admin_head' ) );
-		add_action( 'page_row_actions', array( __CLASS__, 'page_row_actions' ), 10, 2 );
 	}
 
 	public static function filter_query( $query ) {
@@ -508,61 +391,6 @@ class Simple_Page_Ordering {
 				sprintf( 'Reset %s order', $post_type )
 			),
 		) );
-	}
-
-	public static function page_row_actions( $actions, $post ) {
-		$post = get_post( $post );
-		if ( ! $post || ! current_user_can( 'edit_post', $post->ID ) ) {
-			return $actions;
-		}
-
-		$should_add_actions = apply_filters( 'simple_page_ordering_allow_row_actions', true, $actions, $post );
-		if ( ! $should_add_actions ) {
-			return $actions;
-		}
-
-		list( 'top_level_pages' => $top_level_pages, 'children_pages' => $children_pages ) = self::get_walked_pages( $post->post_type );
-
-		$edit_link = get_edit_post_link( $post->ID, 'raw' );
-		$move_under_grandparent_link = add_query_arg( array(
-			'action'    => 'spo-move-under-grandparent',
-			'spo_nonce' => wp_create_nonce( "simple-page-ordering-nonce-move-{$post->ID}" ),
-			'post_type' => $post->post_type,
-		), $edit_link );
-		$move_under_sibling_link = add_query_arg( array(
-			'action'    => 'spo-move-under-sibling',
-			'spo_nonce' => wp_create_nonce( "simple-page-ordering-nonce-move-{$post->ID}" ),
-			'post_type' => $post->post_type,
-		), $edit_link );
-
-		if ( $post->post_parent ) {
-			$actions['spo-move-under-grandparent'] = sprintf(
-				'<a href="%s">%s</a>',
-				esc_url( $move_under_grandparent_link ),
-				sprintf( 'Move out from under %s', get_the_title( $post->post_parent ) )
-			);
-		}
-
-		$siblings = ( 0 === $post->post_parent ) ? $top_level_pages : ( $children_pages[ $post->post_parent ] ?? [] );
-		$sibling = 0;
-		$filtered_siblings = wp_list_filter( $siblings, array( 'ID' => $post->ID ) );
-		
-		if ( ! empty( $filtered_siblings ) ) {
-			$key = array_key_first( $filtered_siblings );
-			if ( $key > 0 ) {
-				$sibling = $siblings[ $key - 1 ]->ID;
-			}
-		}
-
-		if ( $sibling ) {
-			$actions['spo-move-under-sibling'] = sprintf(
-				'<a href="%s">%s</a>',
-				esc_url( $move_under_sibling_link ),
-				sprintf( 'Move under %s', get_the_title( $sibling ) )
-			);
-		}
-
-		return $actions;
 	}
 
 	public static function ajax_simple_page_ordering() {
