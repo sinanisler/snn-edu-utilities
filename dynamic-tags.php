@@ -1,5 +1,6 @@
 <?php
 
+
 /**
  * Custom Dynamic Data Tag: Current Course Enrollment Percentage
  * Returns the percentage of completed/enrolled posts for the current course
@@ -35,18 +36,8 @@ function snn_get_course_enrollment_percentage_value( $tag, $post, $context = 'te
         return $tag;
     }
 
-    // Get the correct post ID from context
-    $post_id = null;
-    if ( is_object( $post ) && isset( $post->ID ) ) {
-        $post_id = $post->ID;
-    } elseif ( is_numeric( $post ) ) {
-        $post_id = $post;
-    } else {
-        $post_id = get_the_ID();
-    }
-
     // Get the enrollment percentage
-    $value = snn_calculate_course_enrollment_percentage( $post_id );
+    $value = snn_calculate_course_enrollment_percentage();
 
     return $value;
 }
@@ -61,18 +52,8 @@ function snn_render_course_enrollment_percentage_tag( $content, $post, $context 
         return $content;
     }
 
-    // Get the correct post ID from context
-    $post_id = null;
-    if ( is_object( $post ) && isset( $post->ID ) ) {
-        $post_id = $post->ID;
-    } elseif ( is_numeric( $post ) ) {
-        $post_id = $post;
-    } else {
-        $post_id = get_the_ID();
-    }
-
     // Get the enrollment percentage
-    $value = snn_calculate_course_enrollment_percentage( $post_id );
+    $value = snn_calculate_course_enrollment_percentage();
 
     // Replace the tag with the value
     $content = str_replace( '{get_current_course_enrollment_percentage}', $value, $content );
@@ -81,13 +62,11 @@ function snn_render_course_enrollment_percentage_tag( $content, $post, $context 
 }
 
 // Helper function to calculate enrollment percentage
-function snn_calculate_course_enrollment_percentage( $post_id = null ) {
+function snn_calculate_course_enrollment_percentage() {
     // Get current post ID
-    if ( ! $post_id ) {
-        $post_id = get_the_ID();
-    }
+    $current_post_id = get_the_ID();
 
-    if ( ! $post_id ) {
+    if ( ! $current_post_id ) {
         return '0%';
     }
 
@@ -102,12 +81,12 @@ function snn_calculate_course_enrollment_percentage( $post_id = null ) {
     $enrolled_posts = get_user_meta( $current_user_id, 'snn_edu_enrolled_posts', true );
 
     // Ensure it's an array
-    if ( ! is_array( $enrolled_posts ) || empty( $enrolled_posts ) ) {
+    if ( ! is_array( $enrolled_posts ) ) {
         $enrolled_posts = [];
     }
 
     // Get the top-level parent (level_0)
-    $top_parent_id = snn_get_top_level_parent( $post_id );
+    $top_parent_id = snn_get_top_level_parent( $current_post_id );
 
     // Get all child posts including the parent itself
     $all_course_posts = snn_get_all_course_posts( $top_parent_id );
@@ -139,24 +118,14 @@ function snn_get_top_level_parent( $post_id ) {
     }
 
     $parent_id = $post_id;
-    $max_iterations = 20; // Prevent infinite loops
-    $iteration = 0;
 
     // Keep traversing up until we reach the top parent
-    while ( $iteration < $max_iterations ) {
-        $parent_post = get_post( $parent_id );
-        
-        if ( ! $parent_post ) {
-            break;
-        }
-        
-        if ( $parent_post->post_parent && $parent_post->post_parent != $parent_id ) {
+    while ( $parent_post = get_post( $parent_id ) ) {
+        if ( $parent_post->post_parent ) {
             $parent_id = $parent_post->post_parent;
         } else {
             break;
         }
-        
-        $iteration++;
     }
 
     return $parent_id;
@@ -164,7 +133,7 @@ function snn_get_top_level_parent( $post_id ) {
 
 // Helper function to get all course posts (parent + all descendants)
 function snn_get_all_course_posts( $parent_id ) {
-    $all_posts = [ (int) $parent_id ]; // Include the parent itself and ensure it's an integer
+    $all_posts = [ $parent_id ]; // Include the parent itself
 
     // Get all children recursively
     $children = snn_get_all_children_recursive( $parent_id );
@@ -173,39 +142,27 @@ function snn_get_all_course_posts( $parent_id ) {
         $all_posts = array_merge( $all_posts, $children );
     }
 
-    // Remove duplicates and ensure all are integers
-    $all_posts = array_unique( array_map( 'intval', $all_posts ) );
-
-    return $all_posts;
+    return array_unique( $all_posts );
 }
 
 // Helper function to recursively get all child posts
 function snn_get_all_children_recursive( $parent_id ) {
     $children = [];
-    
-    // Get the post type of the parent
-    $post_type = get_post_type( $parent_id );
-    
-    if ( ! $post_type ) {
-        return $children;
-    }
 
     // Get direct children
     $args = [
-        'post_type'      => $post_type,
+        'post_type'      => get_post_type( $parent_id ),
         'post_parent'    => $parent_id,
         'posts_per_page' => -1,
         'post_status'    => 'publish',
         'fields'         => 'ids',
-        'orderby'        => 'menu_order',
-        'order'          => 'ASC',
     ];
 
     $child_posts = get_posts( $args );
 
     if ( ! empty( $child_posts ) ) {
         foreach ( $child_posts as $child_id ) {
-            $children[] = (int) $child_id;
+            $children[] = $child_id;
 
             // Recursively get children of this child
             $grandchildren = snn_get_all_children_recursive( $child_id );
