@@ -84,6 +84,18 @@ class SNN_EDU_Element_Comment_List extends Element {
         $enable  = ! empty( $this->settings['inline_edit'] );
         $show_ratings = ! empty( $this->settings['show_ratings'] );
 
+        // Get the current post ID reliably - use queried object first, fallback to get_the_ID()
+        $current_post_id = get_queried_object_id();
+        if ( ! $current_post_id ) {
+            $current_post_id = get_the_ID();
+        }
+
+        // Safety check - must have a valid post ID
+        if ( ! $current_post_id ) {
+            echo '<div>No post context available for comments.</div>';
+            return;
+        }
+
         $this->set_attribute( '_root', 'class', 'snn-comment-list-wrapper' );
         echo '<div ' . $this->render_attributes( '_root' ) . '>';
 
@@ -153,7 +165,7 @@ img.snn-selected-image{outline:2px solid #0073aa;outline-offset:2px}
             if (
                 $unapproved_comment &&
                 $unapproved_comment->comment_approved == '0' &&
-                $unapproved_comment->comment_post_ID == get_the_ID()
+                $unapproved_comment->comment_post_ID == $current_post_id
             ) {
                 // Show notification
                 echo '<div class="snn-comment-moderation-notice">' . esc_html($moderation_notice) . '</div>';
@@ -178,7 +190,7 @@ img.snn-selected-image{outline:2px solid #0073aa;outline-offset:2px}
         }
 
         $comment_args = [
-            'post_id' => get_the_ID(),
+            'post_id' => $current_post_id,
             'status'  => 'approve',
             'order'   => $order,
         ];
