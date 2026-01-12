@@ -232,9 +232,7 @@ img.snn-selected-image{outline:2px solid #0073aa;outline-offset:2px}
             }
             ?>
             <div class="snn-comment-metadata">
-                <a href="<?php echo esc_url( get_comment_link( $comment->comment_ID ) ); ?>">
                     <time datetime="<?php comment_time( 'c' ); ?>"><?php printf( '%1$s at %2$s', get_comment_date(), get_comment_time() ); ?></time>
-                </a>
             </div>
         </div>
         <div class="snn-comment-content-wrapper">
