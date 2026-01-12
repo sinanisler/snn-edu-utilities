@@ -3,17 +3,27 @@
 /**
  * Custom Dynamic Data Tag: Current Course Enrollment Percentage
  * Returns the percentage of completed/enrolled posts for the current course
- * 
- * {get_current_course_enrollment_percentage}
- * 
+ *
+ * Usage:
+ * {get_current_course_enrollment_percentage} - Returns percentage (e.g., "45%")
+ * {get_current_course_enrollment_percentage:bool} - Returns "true" if enrolled (>0%), "false" if not enrolled (0%)
+ *
  */
 
 // Step 1: Register the tag in the builder
 add_filter( 'bricks/dynamic_tags_list', 'snn_add_course_enrollment_percentage_tag' );
 function snn_add_course_enrollment_percentage_tag( $tags ) {
+    // Default tag (returns percentage)
     $tags[] = [
         'name'  => '{get_current_course_enrollment_percentage}',
         'label' => 'Current Course Enrollment Percentage',
+        'group' => 'SNN Edu',
+    ];
+
+    // Bool variant
+    $tags[] = [
+        'name'  => '{get_current_course_enrollment_percentage:bool}',
+        'label' => 'Current Course Enrollment Percentage - Boolean',
         'group' => 'SNN Edu',
     ];
 
@@ -31,8 +41,16 @@ function snn_get_course_enrollment_percentage_value( $tag, $post, $context = 'te
     // Clean the tag (remove curly braces)
     $clean_tag = str_replace( [ '{', '}' ], '', $tag );
 
+    // Parse option if present
+    $option = '';
+    if ( strpos( $clean_tag, ':' ) !== false ) {
+        list( $tag_name, $option ) = explode( ':', $clean_tag, 2 );
+    } else {
+        $tag_name = $clean_tag;
+    }
+
     // Only process our specific tag
-    if ( $clean_tag !== 'get_current_course_enrollment_percentage' ) {
+    if ( $tag_name !== 'get_current_course_enrollment_percentage' ) {
         return $tag;
     }
 
@@ -46,8 +64,8 @@ function snn_get_course_enrollment_percentage_value( $tag, $post, $context = 'te
         $post_id = get_the_ID();
     }
 
-    // Get the enrollment percentage
-    $value = snn_calculate_course_enrollment_percentage( $post_id );
+    // Get the enrollment percentage with option
+    $value = snn_calculate_course_enrollment_percentage( $post_id, $option );
 
     // Return based on context
     // For image context, you would return an array of image IDs
@@ -60,8 +78,8 @@ add_filter( 'bricks/dynamic_data/render_content', 'snn_render_course_enrollment_
 add_filter( 'bricks/frontend/render_data', 'snn_render_course_enrollment_percentage_tag', 20, 3 );
 function snn_render_course_enrollment_percentage_tag( $content, $post, $context = 'text' ) {
 
-    // Only process if our tag exists in content
-    if ( strpos( $content, '{get_current_course_enrollment_percentage}' ) === false ) {
+    // Only process if any variant of our tag exists in content
+    if ( strpos( $content, '{get_current_course_enrollment_percentage' ) === false ) {
         return $content;
     }
 
@@ -75,31 +93,36 @@ function snn_render_course_enrollment_percentage_tag( $content, $post, $context 
         $post_id = get_the_ID();
     }
 
-    // Get the enrollment percentage
-    $value = snn_calculate_course_enrollment_percentage( $post_id );
+    // Match both variants using regex
+    preg_match_all('/{get_current_course_enrollment_percentage(?::([^}]+))?}/', $content, $matches);
 
-    // Replace the tag with the value
-    $content = str_replace( '{get_current_course_enrollment_percentage}', $value, $content );
+    if ( ! empty( $matches[0] ) ) {
+        foreach ( $matches[0] as $index => $full_match ) {
+            $option = isset( $matches[1][$index] ) && $matches[1][$index] ? $matches[1][$index] : '';
+            $value = snn_calculate_course_enrollment_percentage( $post_id, $option );
+            $content = str_replace( $full_match, $value, $content );
+        }
+    }
 
     return $content;
 }
 
 // Helper function to calculate enrollment percentage
-function snn_calculate_course_enrollment_percentage( $post_id = null ) {
+function snn_calculate_course_enrollment_percentage( $post_id = null, $option = '' ) {
     // Get current post ID
     if ( ! $post_id ) {
         $post_id = get_the_ID();
     }
 
     if ( ! $post_id ) {
-        return '0%';
+        return $option === 'bool' ? 'false' : '0%';
     }
 
     // Get current user
     $current_user_id = get_current_user_id();
 
     if ( ! $current_user_id ) {
-        return '0%';
+        return $option === 'bool' ? 'false' : '0%';
     }
 
     // Get user's enrolled posts
@@ -117,7 +140,7 @@ function snn_calculate_course_enrollment_percentage( $post_id = null ) {
 
     // Ensure it's an array and convert all values to integers
     if ( ! is_array( $enrolled_posts ) || empty( $enrolled_posts ) ) {
-        return '0%';
+        return $option === 'bool' ? 'false' : '0%';
     }
     
     // Convert all enrolled post IDs to integers
@@ -131,7 +154,7 @@ function snn_calculate_course_enrollment_percentage( $post_id = null ) {
     $all_course_posts = snn_get_all_course_posts( $top_parent_id );
 
     if ( empty( $all_course_posts ) ) {
-        return '0%';
+        return $option === 'bool' ? 'false' : '0%';
     }
 
     // Calculate how many posts user has enrolled in
@@ -144,6 +167,11 @@ function snn_calculate_course_enrollment_percentage( $post_id = null ) {
         $percentage = round( ( $enrolled_count / $total_count ) * 100 );
     } else {
         $percentage = 0;
+    }
+
+    // Return based on option
+    if ( $option === 'bool' ) {
+        return $percentage > 0 ? 'true' : 'false';
     }
 
     return $percentage . '%';
