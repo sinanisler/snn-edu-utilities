@@ -210,89 +210,106 @@ class Simple_Page_Ordering {
 			function initDragAndDrop() {
 				var tbody = document.querySelector('.wp-list-table tbody');
 				if (!tbody) return;
-				
+
 				var rows = tbody.querySelectorAll('tr');
-				
+				var currentDropTarget = null;
+
 				rows.forEach(function(row) {
 					if (row.classList.contains('inline-edit-row')) return;
-					
+
 					row.setAttribute('draggable', 'true');
-					
+
 					row.addEventListener('dragstart', function(e) {
 						if (isUpdating) {
 							e.preventDefault();
 							return;
 						}
-						
-						if (e.target.tagName === 'INPUT' || 
-							e.target.tagName === 'TEXTAREA' || 
-							e.target.tagName === 'SELECT' || 
-							e.target.tagName === 'BUTTON' || 
+
+						if (e.target.tagName === 'INPUT' ||
+							e.target.tagName === 'TEXTAREA' ||
+							e.target.tagName === 'SELECT' ||
+							e.target.tagName === 'BUTTON' ||
 							e.target.tagName === 'A') {
 							e.preventDefault();
 							return;
 						}
-						
+
 						draggedElement = this;
 						this.classList.add('spo-dragging');
 						e.dataTransfer.effectAllowed = 'move';
 						e.dataTransfer.setData('text/html', this.innerHTML);
 					});
-					
+
 					row.addEventListener('dragend', function() {
 						this.classList.remove('spo-dragging');
-						
+						currentDropTarget = null;
+
 						var allRows = tbody.querySelectorAll('tr');
 						allRows.forEach(function(r) {
 							r.classList.remove('spo-drag-over');
 						});
 					});
-					
+
 					row.addEventListener('dragover', function(e) {
 						if (e.preventDefault) {
 							e.preventDefault();
 						}
 						e.dataTransfer.dropEffect = 'move';
+
+						if (this !== draggedElement && this !== currentDropTarget) {
+							var allRows = tbody.querySelectorAll('tr');
+							allRows.forEach(function(r) {
+								r.classList.remove('spo-drag-over');
+							});
+
+							this.classList.add('spo-drag-over');
+							currentDropTarget = this;
+						}
+
 						return false;
 					});
-					
+
 					row.addEventListener('dragenter', function(e) {
-						if (this !== draggedElement) {
-							this.classList.add('spo-drag-over');
+						e.preventDefault();
+					});
+
+					row.addEventListener('dragleave', function(e) {
+						if (e.target === this && !this.contains(e.relatedTarget)) {
+							this.classList.remove('spo-drag-over');
+							if (currentDropTarget === this) {
+								currentDropTarget = null;
+							}
 						}
 					});
-					
-					row.addEventListener('dragleave', function() {
-						this.classList.remove('spo-drag-over');
-					});
-					
+
 					row.addEventListener('drop', function(e) {
 						if (e.stopPropagation) {
 							e.stopPropagation();
 						}
-						
+
 						if (draggedElement !== this) {
 							var allRows = Array.from(tbody.querySelectorAll('tr:not(.inline-edit-row)'));
 							var draggedIndex = allRows.indexOf(draggedElement);
 							var targetIndex = allRows.indexOf(this);
-							
+
 							if (draggedIndex !== -1 && targetIndex !== -1) {
 								if (draggedIndex < targetIndex) {
 									this.parentNode.insertBefore(draggedElement, this.nextSibling);
 								} else {
 									this.parentNode.insertBefore(draggedElement, this);
 								}
-								
+
 								handleReorder(draggedElement);
 								fixRowColors();
 							}
 						}
-						
+
 						this.classList.remove('spo-drag-over');
+						currentDropTarget = null;
 						return false;
 					});
 				});
-				
+
 				document.addEventListener('keydown', function(e) {
 					if (e.key === 'Escape' && draggedElement) {
 						draggedElement.classList.remove('spo-dragging');
