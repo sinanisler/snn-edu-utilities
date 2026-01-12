@@ -63,21 +63,8 @@ function snn_render_course_enrollment_percentage_tag( $content, $post, $context 
 
 // Helper function to calculate enrollment percentage
 function snn_calculate_course_enrollment_percentage() {
-    // Get current post ID from the queried object
-    $current_post_id = get_queried_object_id();
-
-    // Fallback to get_the_ID() if queried object doesn't work
-    if ( ! $current_post_id ) {
-        $current_post_id = get_the_ID();
-    }
-
-    // Fallback to global $post
-    if ( ! $current_post_id ) {
-        global $post;
-        if ( isset( $post->ID ) ) {
-            $current_post_id = $post->ID;
-        }
-    }
+    // Get current post ID
+    $current_post_id = get_the_ID();
 
     if ( ! $current_post_id ) {
         return '0%';
@@ -99,7 +86,6 @@ function snn_calculate_course_enrollment_percentage() {
     }
 
     // Get the top-level parent (level_0)
-    // This will return the same ID if already at top level
     $top_parent_id = snn_get_top_level_parent( $current_post_id );
 
     // Get all child posts including the parent itself
