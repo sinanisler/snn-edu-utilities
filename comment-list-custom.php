@@ -193,6 +193,9 @@ img.snn-selected-image{outline:2px solid #0073aa;outline-offset:2px}
             'post_id' => $current_post_id,
             'status'  => 'approve',
             'order'   => $order,
+            'no_found_rows' => false,
+            'update_comment_meta_cache' => true,
+            'hierarchical' => false,
         ];
         if ( $number !== '' ) {
             $comment_args['number'] = $number;
@@ -421,7 +424,7 @@ function snn_edu_comment_edit_ajax() {
     if ( ! $comment_id || '' === $content ) {
         wp_send_json_error( 'Invalid data', 400 );
     }
-    if ( ! current_user_can( 'activate_plugins', $comment_id ) ) {
+    if ( ! current_user_can( 'edit_comment', $comment_id ) ) {
         wp_send_json_error( 'No permission', 403 );
     }
     if ( function_exists( 'kses_remove_filters' ) ) kses_remove_filters();
