@@ -488,14 +488,20 @@ function snn_get_course_id_in_enrollment_list_value( $tag, $post, $context = 'te
         return $tag;
     }
 
-    // Get the correct post ID from context
+    // Get the correct post ID from context - prioritize the $post parameter
     $post_id = null;
     if ( is_object( $post ) && isset( $post->ID ) ) {
         $post_id = $post->ID;
-    } elseif ( is_numeric( $post ) ) {
-        $post_id = $post;
-    } else {
+    } elseif ( is_numeric( $post ) && $post > 0 ) {
+        $post_id = (int) $post;
+    }
+
+    // Fallback: try get_the_ID() first, then queried object
+    if ( ! $post_id ) {
         $post_id = get_the_ID();
+    }
+    if ( ! $post_id ) {
+        $post_id = get_queried_object_id();
     }
 
     // Check if post ID exists in user enrollment list
@@ -514,14 +520,20 @@ function snn_render_course_id_in_enrollment_list_tag( $content, $post, $context 
         return $content;
     }
 
-    // Get the correct post ID from context
+    // Get the correct post ID from context - prioritize the $post parameter
     $post_id = null;
     if ( is_object( $post ) && isset( $post->ID ) ) {
         $post_id = $post->ID;
-    } elseif ( is_numeric( $post ) ) {
-        $post_id = $post;
-    } else {
+    } elseif ( is_numeric( $post ) && $post > 0 ) {
+        $post_id = (int) $post;
+    }
+
+    // Fallback: try get_the_ID() first, then queried object
+    if ( ! $post_id ) {
         $post_id = get_the_ID();
+    }
+    if ( ! $post_id ) {
+        $post_id = get_queried_object_id();
     }
 
     // Check if post ID exists in user enrollment list
@@ -535,14 +547,20 @@ function snn_render_course_id_in_enrollment_list_tag( $content, $post, $context 
 
 // Helper function to check if post ID exists in user enrollment list
 function snn_check_post_id_in_user_enrollment( $post_id = null ) {
-    // Get current post ID
+    // Get current post ID with multiple fallbacks
     if ( ! $post_id ) {
         $post_id = get_the_ID();
+    }
+    if ( ! $post_id ) {
+        $post_id = get_queried_object_id();
     }
 
     if ( ! $post_id ) {
         return 'false';
     }
+
+    // Ensure post_id is an integer
+    $post_id = (int) $post_id;
 
     // Get current user
     $current_user_id = get_current_user_id();
