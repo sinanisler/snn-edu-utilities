@@ -747,6 +747,16 @@ function get_parent_and_child_list($property = '') {
     // Format output based on property
     $output = [];
 
+    // Get enrolled posts for current user (for default output with enrollment class)
+    $enrolled_posts = [];
+    if ($property === '' && is_user_logged_in()) {
+        $user_id = get_current_user_id();
+        $enrolled_posts = get_user_meta($user_id, 'snn_edu_enrolled_posts', true);
+        if (!is_array($enrolled_posts)) {
+            $enrolled_posts = [];
+        }
+    }
+
     foreach ($posts_list as $post_item) {
         switch ($property) {
             case 'id':
@@ -756,8 +766,9 @@ function get_parent_and_child_list($property = '') {
                 $output[] = $post_item->post_title;
                 break;
             default:
-                // Default: name with link
-                $output[] = '<a href="' . esc_url(get_permalink($post_item->ID)) . '">' . esc_html($post_item->post_title) . '</a>';
+                // Default: name with link, with enrolled/notenrolled class
+                $enrollment_class = in_array($post_item->ID, $enrolled_posts) ? 'enrolled' : 'notenrolled';
+                $output[] = '<a href="' . esc_url(get_permalink($post_item->ID)) . '" class="' . $enrollment_class . '">' . esc_html($post_item->post_title) . '</a>';
                 break;
         }
     }
