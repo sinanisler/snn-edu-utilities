@@ -709,7 +709,64 @@ function snn_edu_get_all_descendants($parent_id, $post_type) {
     return $all_children;
 }
 
-// Step 4: Main function to get parent and child list
+// Step 4: Build nested hierarchical HTML list recursively
+function snn_edu_build_nested_list($parent_id, $post_type, $depth, $current_post_id, $enrolled_posts) {
+    $children = get_children([
+        'post_parent' => $parent_id,
+        'post_type'   => $post_type,
+        'post_status' => 'publish',
+        'orderby'     => 'menu_order title',
+        'order'       => 'ASC',
+    ]);
+
+    if (empty($children)) {
+        return '';
+    }
+
+    $output = '<ul class="depth-' . $depth . ' children">';
+
+    foreach ($children as $child) {
+        // Build li classes
+        $li_classes = ['depth-' . $depth];
+
+        // Check if this is the current post
+        if ($child->ID === $current_post_id) {
+            $li_classes[] = 'current';
+        }
+
+        // Check enrollment status
+        if (in_array($child->ID, $enrolled_posts)) {
+            $li_classes[] = 'enrolled';
+        } else {
+            $li_classes[] = 'notenrolled';
+        }
+
+        // Check if has children
+        $has_children = get_children([
+            'post_parent' => $child->ID,
+            'post_type'   => $post_type,
+            'post_status' => 'publish',
+            'numberposts' => 1,
+        ]);
+        if (!empty($has_children)) {
+            $li_classes[] = 'has-children';
+        }
+
+        $output .= '<li class="' . implode(' ', $li_classes) . '">';
+        $output .= '<a href="' . esc_url(get_permalink($child->ID)) . '">' . esc_html($child->post_title) . '</a>';
+
+        // Recursively get children
+        $output .= snn_edu_build_nested_list($child->ID, $post_type, $depth + 1, $current_post_id, $enrolled_posts);
+
+        $output .= '</li>';
+    }
+
+    $output .= '</ul>';
+
+    return $output;
+}
+
+// Step 5: Main function to get parent and child list
 function snn_edu_get_parent_and_child_list($property = '') {
     // Get the current post ID using get_queried_object_id for reliability
     $current_post_id = get_queried_object_id();
@@ -739,17 +796,26 @@ function snn_edu_get_parent_and_child_list($property = '') {
         return '';
     }
 
-    // Build the list: parent first, then all descendants
-    $posts_list = [$top_parent];
-    $descendants = snn_edu_get_all_descendants($top_parent_id, $post_type);
-    $posts_list = array_merge($posts_list, $descendants);
+    // For id and name properties, use flat list
+    if ($property === 'id' || $property === 'name') {
+        $posts_list = [$top_parent];
+        $descendants = snn_edu_get_all_descendants($top_parent_id, $post_type);
+        $posts_list = array_merge($posts_list, $descendants);
 
-    // Format output based on property
-    $output = [];
+        $output = [];
+        foreach ($posts_list as $post_item) {
+            if ($property === 'id') {
+                $output[] = $post_item->ID;
+            } else {
+                $output[] = $post_item->post_title;
+            }
+        }
+        return implode(', ', $output);
+    }
 
-    // Get enrolled posts for current user (for default output with enrollment class)
+    // Default: Build nested hierarchical list with semantic classes
     $enrolled_posts = [];
-    if ($property === '' && is_user_logged_in()) {
+    if (is_user_logged_in()) {
         $user_id = get_current_user_id();
         $enrolled_posts = get_user_meta($user_id, 'snn_edu_enrolled_posts', true);
         if (!is_array($enrolled_posts)) {
@@ -757,32 +823,43 @@ function snn_edu_get_parent_and_child_list($property = '') {
         }
     }
 
-    foreach ($posts_list as $post_item) {
-        switch ($property) {
-            case 'id':
-                $output[] = $post_item->ID;
-                break;
-            case 'name':
-                $output[] = $post_item->post_title;
-                break;
-            default:
-                // Default: name with link, with enrolled/notenrolled class
-                $enrollment_class = in_array($post_item->ID, $enrolled_posts) ? 'enrolled' : 'notenrolled';
-                $output[] = '<a href="' . esc_url(get_permalink($post_item->ID)) . '" class="' . $enrollment_class . '">' . esc_html($post_item->post_title) . '</a>';
-                break;
-        }
+    // Build root li classes
+    $root_li_classes = ['depth-0', 'root'];
+    if ($top_parent_id === $current_post_id) {
+        $root_li_classes[] = 'current';
+    }
+    if (in_array($top_parent_id, $enrolled_posts)) {
+        $root_li_classes[] = 'enrolled';
+    } else {
+        $root_li_classes[] = 'notenrolled';
     }
 
-    // Return as comma-separated list for id/name, or HTML list for default
-    if ($property === 'id' || $property === 'name') {
-        return implode(', ', $output);
+    // Check if root has children
+    $has_children = get_children([
+        'post_parent' => $top_parent_id,
+        'post_type'   => $post_type,
+        'post_status' => 'publish',
+        'numberposts' => 1,
+    ]);
+    if (!empty($has_children)) {
+        $root_li_classes[] = 'has-children';
     }
 
-    // Default: return as unordered list
-    return '<ul class="parent-child-list"><li>' . implode('</li><li>', $output) . '</li></ul>';
+    // Start building the nested list
+    $output = '<ul class="parent-child-list depth-0">';
+    $output .= '<li class="' . implode(' ', $root_li_classes) . '">';
+    $output .= '<a href="' . esc_url(get_permalink($top_parent_id)) . '">' . esc_html($top_parent->post_title) . '</a>';
+
+    // Add nested children
+    $output .= snn_edu_build_nested_list($top_parent_id, $post_type, 1, $current_post_id, $enrolled_posts);
+
+    $output .= '</li>';
+    $output .= '</ul>';
+
+    return $output;
 }
 
-// Step 5: Render the dynamic tag in Bricks Builder.
+// Step 6: Render the dynamic tag in Bricks Builder.
 add_filter('bricks/dynamic_data/render_tag', 'snn_edu_render_parent_and_child_list_tag', 20, 3);
 function snn_edu_render_parent_and_child_list_tag($tag, $post, $context = 'text') {
     // Ensure that $tag is a string before processing.
@@ -818,7 +895,7 @@ function snn_edu_render_parent_and_child_list_tag($tag, $post, $context = 'text'
     return $tag;
 }
 
-// Step 6: Replace placeholders in dynamic content dynamically.
+// Step 7: Replace placeholders in dynamic content dynamically.
 add_filter('bricks/dynamic_data/render_content', 'snn_edu_replace_parent_and_child_list_in_content', 20, 3);
 add_filter('bricks/frontend/render_data', 'snn_edu_replace_parent_and_child_list_in_content', 20, 2);
 function snn_edu_replace_parent_and_child_list_in_content($content, $post, $context = 'text') {
