@@ -631,6 +631,7 @@ function snn_check_post_id_in_user_enrollment( $post_id = null ) {
  * - (default): Returns list with names and links (HTML list)
  * - name: Returns only names list
  * - id: Returns only IDs list
+ * - [custom_field_name]: Returns list with custom field value displayed after link (e.g., video_length)
  *
  * Logic:
  * - Works on any post (parent or child)
@@ -710,7 +711,7 @@ function snn_edu_get_all_descendants($parent_id, $post_type) {
 }
 
 // Step 4: Build nested hierarchical HTML list recursively
-function snn_edu_build_nested_list($parent_id, $post_type, $depth, $current_post_id, $enrolled_posts) {
+function snn_edu_build_nested_list($parent_id, $post_type, $depth, $current_post_id, $enrolled_posts, $custom_field = '') {
     $children = get_children([
         'post_parent' => $parent_id,
         'post_type'   => $post_type,
@@ -760,8 +761,16 @@ function snn_edu_build_nested_list($parent_id, $post_type, $depth, $current_post
         $output .= '<li class="' . implode(' ', $li_classes) . '">';
         $output .= '<a href="' . esc_url(get_permalink($child->ID)) . '" class="' . implode(' ', $a_classes) . '">' . esc_html($child->post_title) . '</a>';
 
+        // Add custom field if specified and exists
+        if ($custom_field) {
+            $field_value = get_post_meta($child->ID, $custom_field, true);
+            if ($field_value) {
+                $output .= '<span class="' . esc_attr($custom_field) . '">' . esc_html($field_value) . '</span>';
+            }
+        }
+
         // Recursively get children
-        $output .= snn_edu_build_nested_list($child->ID, $post_type, $depth + 1, $current_post_id, $enrolled_posts);
+        $output .= snn_edu_build_nested_list($child->ID, $post_type, $depth + 1, $current_post_id, $enrolled_posts, $custom_field);
 
         $output .= '</li>';
     }
@@ -818,6 +827,12 @@ function snn_edu_get_parent_and_child_list($property = '') {
         return implode(', ', $output);
     }
 
+    // Determine if property is a custom field name (not empty, not 'id', not 'name')
+    $custom_field = '';
+    if ($property !== '' && $property !== 'id' && $property !== 'name') {
+        $custom_field = $property;
+    }
+
     // Default: Build nested hierarchical list with semantic classes
     $enrolled_posts = [];
     if (is_user_logged_in()) {
@@ -860,8 +875,16 @@ function snn_edu_get_parent_and_child_list($property = '') {
     $output .= '<li class="' . implode(' ', $root_li_classes) . '">';
     $output .= '<a href="' . esc_url(get_permalink($top_parent_id)) . '" class="' . implode(' ', $root_a_classes) . '">' . esc_html($top_parent->post_title) . '</a>';
 
+    // Add custom field for root if specified and exists
+    if ($custom_field) {
+        $root_field_value = get_post_meta($top_parent_id, $custom_field, true);
+        if ($root_field_value) {
+            $output .= '<span class="' . esc_attr($custom_field) . '">' . esc_html($root_field_value) . '</span>';
+        }
+    }
+
     // Add nested children
-    $output .= snn_edu_build_nested_list($top_parent_id, $post_type, 1, $current_post_id, $enrolled_posts);
+    $output .= snn_edu_build_nested_list($top_parent_id, $post_type, 1, $current_post_id, $enrolled_posts, $custom_field);
 
     $output .= '</li>';
     $output .= '</ul>';
