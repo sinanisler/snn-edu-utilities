@@ -726,19 +726,23 @@ function snn_edu_build_nested_list($parent_id, $post_type, $depth, $current_post
     $output = '<ul class="depth-' . $depth . ' children">';
 
     foreach ($children as $child) {
-        // Build li classes
+        // Build li and a classes
         $li_classes = ['depth-' . $depth];
+        $a_classes = ['depth-' . $depth];
 
         // Check if this is the current post
         if ($child->ID === $current_post_id) {
             $li_classes[] = 'current';
+            $a_classes[] = 'current';
         }
 
         // Check enrollment status
         if (in_array($child->ID, $enrolled_posts)) {
             $li_classes[] = 'enrolled';
+            $a_classes[] = 'enrolled';
         } else {
             $li_classes[] = 'notenrolled';
+            $a_classes[] = 'notenrolled';
         }
 
         // Check if has children
@@ -750,10 +754,11 @@ function snn_edu_build_nested_list($parent_id, $post_type, $depth, $current_post
         ]);
         if (!empty($has_children)) {
             $li_classes[] = 'has-children';
+            $a_classes[] = 'has-children';
         }
 
         $output .= '<li class="' . implode(' ', $li_classes) . '">';
-        $output .= '<a href="' . esc_url(get_permalink($child->ID)) . '">' . esc_html($child->post_title) . '</a>';
+        $output .= '<a href="' . esc_url(get_permalink($child->ID)) . '" class="' . implode(' ', $a_classes) . '">' . esc_html($child->post_title) . '</a>';
 
         // Recursively get children
         $output .= snn_edu_build_nested_list($child->ID, $post_type, $depth + 1, $current_post_id, $enrolled_posts);
@@ -823,15 +828,19 @@ function snn_edu_get_parent_and_child_list($property = '') {
         }
     }
 
-    // Build root li classes
+    // Build root li and a classes
     $root_li_classes = ['depth-0', 'root'];
+    $root_a_classes = ['depth-0', 'root'];
     if ($top_parent_id === $current_post_id) {
         $root_li_classes[] = 'current';
+        $root_a_classes[] = 'current';
     }
     if (in_array($top_parent_id, $enrolled_posts)) {
         $root_li_classes[] = 'enrolled';
+        $root_a_classes[] = 'enrolled';
     } else {
         $root_li_classes[] = 'notenrolled';
+        $root_a_classes[] = 'notenrolled';
     }
 
     // Check if root has children
@@ -843,12 +852,13 @@ function snn_edu_get_parent_and_child_list($property = '') {
     ]);
     if (!empty($has_children)) {
         $root_li_classes[] = 'has-children';
+        $root_a_classes[] = 'has-children';
     }
 
     // Start building the nested list
     $output = '<ul class="parent-child-list depth-0">';
     $output .= '<li class="' . implode(' ', $root_li_classes) . '">';
-    $output .= '<a href="' . esc_url(get_permalink($top_parent_id)) . '">' . esc_html($top_parent->post_title) . '</a>';
+    $output .= '<a href="' . esc_url(get_permalink($top_parent_id)) . '" class="' . implode(' ', $root_a_classes) . '">' . esc_html($top_parent->post_title) . '</a>';
 
     // Add nested children
     $output .= snn_edu_build_nested_list($top_parent_id, $post_type, 1, $current_post_id, $enrolled_posts);
