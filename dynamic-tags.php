@@ -662,7 +662,7 @@ function snn_edu_add_parent_and_child_list_tags_to_builder($tags) {
 }
 
 // Step 2: Get the top-level parent post ID (root ancestor)
-function get_top_level_parent_id($post_id) {
+function snn_edu_get_top_level_parent_id($post_id) {
     $post = get_post($post_id);
 
     if (!$post) {
@@ -688,7 +688,7 @@ function get_top_level_parent_id($post_id) {
 }
 
 // Step 3: Get all descendants recursively
-function get_all_descendants($parent_id, $post_type) {
+function snn_edu_get_all_descendants($parent_id, $post_type) {
     $all_children = [];
 
     $children = get_children([
@@ -702,7 +702,7 @@ function get_all_descendants($parent_id, $post_type) {
     foreach ($children as $child) {
         $all_children[] = $child;
         // Recursively get children of this child
-        $grandchildren = get_all_descendants($child->ID, $post_type);
+        $grandchildren = snn_edu_get_all_descendants($child->ID, $post_type);
         $all_children = array_merge($all_children, $grandchildren);
     }
 
@@ -710,7 +710,7 @@ function get_all_descendants($parent_id, $post_type) {
 }
 
 // Step 4: Main function to get parent and child list
-function get_parent_and_child_list($property = '') {
+function snn_edu_get_parent_and_child_list($property = '') {
     // Get the current post ID using get_queried_object_id for reliability
     $current_post_id = get_queried_object_id();
 
@@ -732,7 +732,7 @@ function get_parent_and_child_list($property = '') {
     $post_type = $current_post->post_type;
 
     // Get the top-level parent
-    $top_parent_id = get_top_level_parent_id($current_post_id);
+    $top_parent_id = snn_edu_get_top_level_parent_id($current_post_id);
     $top_parent = get_post($top_parent_id);
 
     if (!$top_parent) {
@@ -741,7 +741,7 @@ function get_parent_and_child_list($property = '') {
 
     // Build the list: parent first, then all descendants
     $posts_list = [$top_parent];
-    $descendants = get_all_descendants($top_parent_id, $post_type);
+    $descendants = snn_edu_get_all_descendants($top_parent_id, $post_type);
     $posts_list = array_merge($posts_list, $descendants);
 
     // Format output based on property
@@ -783,8 +783,8 @@ function get_parent_and_child_list($property = '') {
 }
 
 // Step 5: Render the dynamic tag in Bricks Builder.
-add_filter('bricks/dynamic_data/render_tag', 'render_parent_and_child_list_tag', 20, 3);
-function render_parent_and_child_list_tag($tag, $post, $context = 'text') {
+add_filter('bricks/dynamic_data/render_tag', 'snn_edu_render_parent_and_child_list_tag', 20, 3);
+function snn_edu_render_parent_and_child_list_tag($tag, $post, $context = 'text') {
     // Ensure that $tag is a string before processing.
     if (is_string($tag)) {
         // Match {snn_edu_get_current_parent_and_child_list} or {snn_edu_get_current_parent_and_child_list:property}
@@ -792,9 +792,9 @@ function render_parent_and_child_list_tag($tag, $post, $context = 'text') {
             // Extract the property from the tag
             if (preg_match('/{snn_edu_get_current_parent_and_child_list:([^}]+)}/', $tag, $matches)) {
                 $property = trim($matches[1]);
-                return get_parent_and_child_list($property);
+                return snn_edu_get_parent_and_child_list($property);
             } elseif ($tag === '{snn_edu_get_current_parent_and_child_list}') {
-                return get_parent_and_child_list();
+                return snn_edu_get_parent_and_child_list();
             }
         }
     }
@@ -805,9 +805,9 @@ function render_parent_and_child_list_tag($tag, $post, $context = 'text') {
             if (is_string($value) && strpos($value, '{snn_edu_get_current_parent_and_child_list') === 0) {
                 if (preg_match('/{snn_edu_get_current_parent_and_child_list:([^}]+)}/', $value, $matches)) {
                     $property = trim($matches[1]);
-                    $tag[$key] = get_parent_and_child_list($property);
+                    $tag[$key] = snn_edu_get_parent_and_child_list($property);
                 } elseif ($value === '{snn_edu_get_current_parent_and_child_list}') {
-                    $tag[$key] = get_parent_and_child_list();
+                    $tag[$key] = snn_edu_get_parent_and_child_list();
                 }
             }
         }
@@ -819,9 +819,9 @@ function render_parent_and_child_list_tag($tag, $post, $context = 'text') {
 }
 
 // Step 6: Replace placeholders in dynamic content dynamically.
-add_filter('bricks/dynamic_data/render_content', 'replace_parent_and_child_list_in_content', 20, 3);
-add_filter('bricks/frontend/render_data', 'replace_parent_and_child_list_in_content', 20, 2);
-function replace_parent_and_child_list_in_content($content, $post, $context = 'text') {
+add_filter('bricks/dynamic_data/render_content', 'snn_edu_replace_parent_and_child_list_in_content', 20, 3);
+add_filter('bricks/frontend/render_data', 'snn_edu_replace_parent_and_child_list_in_content', 20, 2);
+function snn_edu_replace_parent_and_child_list_in_content($content, $post, $context = 'text') {
     if (!is_string($content)) {
         return $content;
     }
@@ -832,7 +832,7 @@ function replace_parent_and_child_list_in_content($content, $post, $context = 't
     if (!empty($matches[0])) {
         foreach ($matches[0] as $index => $full_match) {
             $property = isset($matches[1][$index]) && $matches[1][$index] ? $matches[1][$index] : '';
-            $value = get_parent_and_child_list($property);
+            $value = snn_edu_get_parent_and_child_list($property);
             $content = str_replace($full_match, $value, $content);
         }
     }
