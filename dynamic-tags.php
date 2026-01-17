@@ -641,8 +641,8 @@ function snn_check_post_id_in_user_enrollment( $post_id = null ) {
  */
 
 // Step 1: Register the dynamic tags with Bricks Builder.
-add_filter('bricks/dynamic_tags_list', 'add_parent_and_child_list_tags_to_builder');
-function add_parent_and_child_list_tags_to_builder($tags) {
+add_filter('bricks/dynamic_tags_list', 'snn_edu_add_parent_and_child_list_tags_to_builder');
+function snn_edu_add_parent_and_child_list_tags_to_builder($tags) {
     $properties = [
         ''     => 'Parent & Child List (Name + Link)',
         'name' => 'Parent & Child List (Name Only)',
