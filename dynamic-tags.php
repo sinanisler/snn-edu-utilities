@@ -437,3 +437,146 @@ function snn_calculate_course_enrollment_user_count( $post_id = null ) {
 
     return (string) $enrolled_user_count;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * Custom Dynamic Data Tag: Check if Current Post ID Exists in User Enrollment List
+ * Returns "true" if the specific post ID is in the user's enrollment list, "false" otherwise
+ *
+ * Usage:
+ * {get_current_course_id_if_exist_in_user_enrollment_list} - Returns "true" or "false"
+ *
+ */
+
+// Step 1: Register the tag in the builder
+add_filter( 'bricks/dynamic_tags_list', 'snn_add_course_id_in_enrollment_list_tag' );
+function snn_add_course_id_in_enrollment_list_tag( $tags ) {
+    $tags[] = [
+        'name'  => '{get_current_course_id_if_exist_in_user_enrollment_list}',
+        'label' => 'Current Course ID Exists in User Enrollment List',
+        'group' => 'SNN Edu',
+    ];
+
+    return $tags;
+}
+
+// Step 2: Render the tag value (for individual tag parsing)
+add_filter( 'bricks/dynamic_data/render_tag', 'snn_get_course_id_in_enrollment_list_value', 20, 3 );
+function snn_get_course_id_in_enrollment_list_value( $tag, $post, $context = 'text' ) {
+    // Ensure $tag is a string
+    if ( ! is_string( $tag ) ) {
+        return $tag;
+    }
+
+    // Clean the tag (remove curly braces)
+    $clean_tag = str_replace( [ '{', '}' ], '', $tag );
+
+    // Only process our specific tag
+    if ( $clean_tag !== 'get_current_course_id_if_exist_in_user_enrollment_list' ) {
+        return $tag;
+    }
+
+    // Get the correct post ID from context
+    $post_id = null;
+    if ( is_object( $post ) && isset( $post->ID ) ) {
+        $post_id = $post->ID;
+    } elseif ( is_numeric( $post ) ) {
+        $post_id = $post;
+    } else {
+        $post_id = get_the_ID();
+    }
+
+    // Check if post ID exists in user enrollment list
+    $value = snn_check_post_id_in_user_enrollment( $post_id );
+
+    return $value;
+}
+
+// Step 3: Render in content (for content with multiple tags)
+add_filter( 'bricks/dynamic_data/render_content', 'snn_render_course_id_in_enrollment_list_tag', 20, 3 );
+add_filter( 'bricks/frontend/render_data', 'snn_render_course_id_in_enrollment_list_tag', 20, 3 );
+function snn_render_course_id_in_enrollment_list_tag( $content, $post, $context = 'text' ) {
+
+    // Only process if our tag exists in content
+    if ( strpos( $content, '{get_current_course_id_if_exist_in_user_enrollment_list}' ) === false ) {
+        return $content;
+    }
+
+    // Get the correct post ID from context
+    $post_id = null;
+    if ( is_object( $post ) && isset( $post->ID ) ) {
+        $post_id = $post->ID;
+    } elseif ( is_numeric( $post ) ) {
+        $post_id = $post;
+    } else {
+        $post_id = get_the_ID();
+    }
+
+    // Check if post ID exists in user enrollment list
+    $value = snn_check_post_id_in_user_enrollment( $post_id );
+
+    // Replace the tag with the value
+    $content = str_replace( '{get_current_course_id_if_exist_in_user_enrollment_list}', $value, $content );
+
+    return $content;
+}
+
+// Helper function to check if post ID exists in user enrollment list
+function snn_check_post_id_in_user_enrollment( $post_id = null ) {
+    // Get current post ID
+    if ( ! $post_id ) {
+        $post_id = get_the_ID();
+    }
+
+    if ( ! $post_id ) {
+        return 'false';
+    }
+
+    // Get current user
+    $current_user_id = get_current_user_id();
+
+    if ( ! $current_user_id ) {
+        return 'false';
+    }
+
+    // Get user's enrolled posts
+    $enrolled_posts_raw = get_user_meta( $current_user_id, 'snn_edu_enrolled_posts', true );
+
+    // Handle if it's stored as JSON string
+    if ( is_string( $enrolled_posts_raw ) ) {
+        $enrolled_posts = json_decode( $enrolled_posts_raw, true );
+        if ( json_last_error() !== JSON_ERROR_NONE ) {
+            $enrolled_posts = maybe_unserialize( $enrolled_posts_raw );
+        }
+    } else {
+        $enrolled_posts = $enrolled_posts_raw;
+    }
+
+    // Ensure it's an array
+    if ( ! is_array( $enrolled_posts ) || empty( $enrolled_posts ) ) {
+        return 'false';
+    }
+
+    // Convert all enrolled post IDs to integers
+    $enrolled_posts = array_map( 'intval', $enrolled_posts );
+    $enrolled_posts = array_filter( $enrolled_posts ); // Remove any 0 values
+
+    // Check if the current post ID is in the user's enrolled posts
+    if ( in_array( (int) $post_id, $enrolled_posts, true ) ) {
+        return 'true';
+    }
+
+    return 'false';
+}
