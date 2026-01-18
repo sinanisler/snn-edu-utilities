@@ -759,7 +759,13 @@ function snn_edu_build_nested_list($parent_id, $post_type, $depth, $current_post
         }
 
         $output .= '<li class="' . implode(' ', $li_classes) . '">';
-        $output .= '<a href="' . esc_url(get_permalink($child->ID)) . '" class="' . implode(' ', $a_classes) . '">' . esc_html($child->post_title) . '</a>';
+
+        // depth-1 items render as div (no link), others as anchor
+        if ($depth === 1) {
+            $output .= '<div class="' . implode(' ', $a_classes) . '">' . esc_html($child->post_title) . '</div>';
+        } else {
+            $output .= '<a href="' . esc_url(get_permalink($child->ID)) . '" class="' . implode(' ', $a_classes) . '">' . esc_html($child->post_title) . '</a>';
+        }
 
         // Add custom field if specified and exists
         if ($custom_field) {
