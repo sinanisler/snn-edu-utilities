@@ -448,3 +448,63 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
     return ob_get_clean();
 }
 add_shortcode('snn_video_tracker', 'snn_edu_user_meta_tracker_shortcode');
+
+/**
+ * Shortcode for manual enrollment button
+ * Usage: [snn_mark_complete] or [snn_mark_complete text="Complete Course"]
+ */
+function snn_edu_mark_complete_shortcode($atts) {
+    if (!snn_edu_get_option('enable_user_meta_tracking', false)) {
+        return '';
+    }
+
+    if (!is_user_logged_in()) {
+        return '<p class="snn-edu-login-required">Please log in to mark as complete.</p>';
+    }
+
+    $atts = shortcode_atts(array(
+        'text' => 'Mark Completed',
+    ), $atts);
+
+    $post_id = get_the_ID();
+    $user_id = get_current_user_id();
+    $enrollments = get_user_meta($user_id, 'snn_edu_enrolled_posts', true);
+    $is_enrolled = is_array($enrollments) && in_array(intval($post_id), $enrollments, true);
+
+    ob_start();
+    ?>
+    <button class="snn-edu-mark-complete-btn" data-post-id="<?php echo esc_attr($post_id); ?>" <?php echo $is_enrolled ? 'disabled' : ''; ?>>
+        <?php echo $is_enrolled ? 'Completed' : esc_html($atts['text']); ?>
+    </button>
+
+    <script>
+    (function() {
+        const btn = document.querySelector('.snn-edu-mark-complete-btn[data-post-id="<?php echo esc_js($post_id); ?>"]');
+        if (btn && !btn.disabled) {
+            btn.addEventListener('click', function() {
+                btn.disabled = true;
+                btn.textContent = 'Saving...';
+                fetch(snnEduUserMeta.restUrl + 'enroll', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-WP-Nonce': snnEduUserMeta.nonce
+                    },
+                    body: JSON.stringify({ post_id: <?php echo intval($post_id); ?> })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    btn.textContent = 'Completed';
+                })
+                .catch(() => {
+                    btn.disabled = false;
+                    btn.textContent = '<?php echo esc_js($atts['text']); ?>';
+                });
+            });
+        }
+    })();
+    </script>
+    <?php
+    return ob_get_clean();
+}
+add_shortcode('snn_mark_complete', 'snn_edu_mark_complete_shortcode');
