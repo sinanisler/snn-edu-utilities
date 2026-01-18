@@ -1574,3 +1574,175 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
     return ob_get_clean();
 }
 add_shortcode('snn_video_tracker', 'snn_edu_user_meta_tracker_shortcode');
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * Shortcode for manual enrollment button
+ * Usage: [snn_mark_complete] or [snn_mark_complete text="Complete Course"]
+ */
+function snn_edu_mark_complete_shortcode($atts) {
+    if (!snn_edu_get_option('enable_user_meta_tracking', false)) {
+        return '';
+    }
+
+    if (!is_user_logged_in()) {
+        return '<p class="snn-edu-login-required">Please log in to mark as complete.</p>';
+    }
+
+    $atts = shortcode_atts(array(
+        'text' => 'Mark Completed',
+        'completed_text' => 'Completed ✓',
+    ), $atts);
+
+    $post_id = get_the_ID();
+    $user_id = get_current_user_id();
+    $enrollments = get_user_meta($user_id, 'snn_edu_enrolled_posts', true);
+    $is_enrolled = is_array($enrollments) && in_array(intval($post_id), $enrollments, true);
+
+    // Get REST API data (same as inline script)
+    $rest_url = rest_url('snn-edu/v1/');
+    $nonce = wp_create_nonce('wp_rest');
+
+    ob_start();
+    ?>
+    <div class="snn-edu-mark-complete-wrapper">
+        <button class="snn-edu-mark-complete-btn" 
+                data-post-id="<?php echo esc_attr($post_id); ?>" 
+                data-rest-url="<?php echo esc_attr($rest_url); ?>"
+                data-nonce="<?php echo esc_attr($nonce); ?>"
+                data-text="<?php echo esc_attr($atts['text']); ?>"
+                data-completed-text="<?php echo esc_attr($atts['completed_text']); ?>"
+                <?php echo $is_enrolled ? 'disabled' : ''; ?>>
+            <?php echo $is_enrolled ? esc_html($atts['completed_text']) : esc_html($atts['text']); ?>
+        </button>
+        <span class="snn-edu-mark-complete-message"></span>
+    </div>
+
+    <style>
+        .snn-edu-mark-complete-wrapper {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .snn-edu-mark-complete-btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .snn-edu-mark-complete-btn:hover:not(:disabled) {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+        }
+        .snn-edu-mark-complete-btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+        .snn-edu-mark-complete-btn:disabled {
+            background: #10b981;
+            cursor: not-allowed;
+            opacity: 0.9;
+        }
+        .snn-edu-mark-complete-message {
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .snn-edu-mark-complete-message.success {
+            color: #10b981;
+        }
+        .snn-edu-mark-complete-message.error {
+            color: #ef4444;
+        }
+    </style>
+
+    <script>
+    (function() {
+        const btn = document.querySelector('.snn-edu-mark-complete-btn[data-post-id="<?php echo esc_js($post_id); ?>"]');
+        if (!btn || btn.disabled) return;
+
+        const message = btn.parentElement.querySelector('.snn-edu-mark-complete-message');
+        const postId = parseInt(btn.dataset.postId);
+        const restUrl = btn.dataset.restUrl;
+        const nonce = btn.dataset.nonce;
+        const originalText = btn.dataset.text;
+        const completedText = btn.dataset.completedText;
+
+        btn.addEventListener('click', function() {
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+            message.textContent = '';
+            message.className = 'snn-edu-mark-complete-message';
+
+            fetch(restUrl + 'enroll', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-WP-Nonce': nonce
+                },
+                body: JSON.stringify({ post_id: postId })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    btn.textContent = completedText;
+                    message.textContent = 'Progress saved!';
+                    message.className = 'snn-edu-mark-complete-message success';
+                    
+                    // Dispatch custom event for other scripts
+                    document.dispatchEvent(new CustomEvent('snn_edu_enrolled', {
+                        detail: {
+                            post_id: postId,
+                            enrolled_count: data.enrolled_count,
+                            enrolled_posts: data.enrolled_posts
+                        }
+                    }));
+
+                    // Hide message after 3 seconds
+                    setTimeout(() => {
+                        message.textContent = '';
+                    }, 3000);
+                } else {
+                    throw new Error(data.message || 'Enrollment failed');
+                }
+            })
+            .catch(error => {
+                console.error('SNN Edu: Enrollment failed', error);
+                btn.disabled = false;
+                btn.textContent = originalText;
+                message.textContent = 'Failed to save. Please try again.';
+                message.className = 'snn-edu-mark-complete-message error';
+                
+                // Hide error message after 5 seconds
+                setTimeout(() => {
+                    message.textContent = '';
+                }, 5000);
+            });
+        });
+    })();
+    </script>
+    <?php
+    return ob_get_clean();
+}
+add_shortcode('snn_mark_complete', 'snn_edu_mark_complete_shortcode');
