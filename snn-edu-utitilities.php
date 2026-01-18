@@ -1636,7 +1636,7 @@ function snn_edu_mark_complete_shortcode($atts) {
             gap: 10px;
         }
         .snn-edu-mark-complete-btn {
-            background: #2563eb;
+            background: var(--c2);
             color: white;
             border: none;
             padding: 12px 24px;
@@ -1645,12 +1645,10 @@ function snn_edu_mark_complete_shortcode($atts) {
             font-size: 16px;
             font-weight: 500;
             transition: all 0.2s ease;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .snn-edu-mark-complete-btn:hover:not(:disabled) {
-            background: #1d4ed8;
+            background: var(--c2-d-4);
             transform: translateY(-1px);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.15);
         }
         .snn-edu-mark-complete-btn:active:not(:disabled) {
             transform: translateY(0);
