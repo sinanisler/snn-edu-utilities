@@ -1214,7 +1214,7 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
     }
 
     if (!is_user_logged_in()) {
-        return '<p class="snn-edu-login-required">Please log in to track your progress.</p>';
+        return '';
     }
 
     $atts = shortcode_atts(array(
