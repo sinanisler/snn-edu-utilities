@@ -762,6 +762,8 @@ function snn_edu_build_nested_list($parent_id, $post_type, $depth, $current_post
         $free_preview = get_post_meta($child->ID, 'free_preview', true);
         if ($free_preview === true || $free_preview === 'true' || $free_preview === '1') {
             $li_classes[] = 'free_preview';
+        } else {
+            $li_classes[] = 'membersonly';
         }
 
         $output .= '<li class="' . implode(' ', $li_classes) . '">';
@@ -886,6 +888,8 @@ function snn_edu_get_parent_and_child_list($property = '') {
     $root_free_preview = get_post_meta($top_parent_id, 'free_preview', true);
     if ($root_free_preview === true || $root_free_preview === 'true' || $root_free_preview === '1') {
         $root_li_classes[] = 'free_preview';
+    } else {
+        $root_li_classes[] = 'membersonly';
     }
 
     // Start building the nested list
