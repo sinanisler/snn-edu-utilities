@@ -25,6 +25,7 @@ define('SNN_EDU_PLUGIN_FILE', __FILE__);
 require_once SNN_EDU_PLUGIN_DIR . 'github-update.php';
 require_once SNN_EDU_PLUGIN_DIR . 'simple-page-order.php';
 require_once SNN_EDU_PLUGIN_DIR . 'dynamic-tags.php';
+require_once SNN_EDU_PLUGIN_DIR . 'guest-class-body.php';
 
 // Register Bricks custom element after theme is loaded
 add_action('init', function() {
