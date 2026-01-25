@@ -775,116 +775,8 @@ function snn_edu_user_meta_register_routes() {
         'callback' => 'snn_edu_user_meta_get_enrollments',
         'permission_callback' => 'snn_edu_user_meta_check_permission',
     ));
-
-    // Admin endpoint to restore enrollments from backup
-    register_rest_route('snn-edu/v1', '/restore-backup', array(
-        'methods' => 'POST',
-        'callback' => 'snn_edu_user_meta_restore_backup',
-        'permission_callback' => function() {
-            return current_user_can('manage_options');
-        },
-        'args' => array(
-            'user_id' => array(
-                'required' => true,
-                'validate_callback' => function($param) {
-                    return is_numeric($param) && intval($param) > 0;
-                },
-                'sanitize_callback' => 'absint',
-            ),
-        ),
-    ));
-
-    // Admin endpoint to merge backup with current (for data recovery)
-    register_rest_route('snn-edu/v1', '/merge-backup', array(
-        'methods' => 'POST',
-        'callback' => 'snn_edu_user_meta_merge_backup',
-        'permission_callback' => function() {
-            return current_user_can('manage_options');
-        },
-        'args' => array(
-            'user_id' => array(
-                'required' => true,
-                'validate_callback' => function($param) {
-                    return is_numeric($param) && intval($param) > 0;
-                },
-                'sanitize_callback' => 'absint',
-            ),
-        ),
-    ));
 }
 add_action('rest_api_init', 'snn_edu_user_meta_register_routes');
-
-/**
- * Admin endpoint: Restore enrollments from backup
- */
-function snn_edu_user_meta_restore_backup($request) {
-    $user_id = $request->get_param('user_id');
-
-    $backup = get_user_meta($user_id, 'snn_edu_enrolled_posts_backup', true);
-    $backup_time = get_user_meta($user_id, 'snn_edu_enrolled_posts_backup_time', true);
-
-    if (!is_array($backup) || empty($backup)) {
-        return new WP_Error('no_backup', 'No backup found for this user', array('status' => 404));
-    }
-
-    // Get current enrollments for comparison
-    $current = snn_edu_get_enrollments_safe($user_id);
-
-    // Restore backup
-    update_user_meta($user_id, 'snn_edu_enrolled_posts', $backup);
-
-    // Log the restoration
-    error_log("SNN EDU ADMIN: Restored enrollments from backup for user {$user_id}. Backup time: {$backup_time}");
-
-    return array(
-        'success' => true,
-        'message' => 'Enrollments restored from backup',
-        'backup_time' => $backup_time,
-        'restored_count' => count($backup),
-        'previous_count' => count($current),
-        'restored_enrollments' => $backup
-    );
-}
-
-/**
- * Admin endpoint: Merge backup with current enrollments (recovers any missing)
- */
-function snn_edu_user_meta_merge_backup($request) {
-    $user_id = $request->get_param('user_id');
-
-    $backup = get_user_meta($user_id, 'snn_edu_enrolled_posts_backup', true);
-    $current = snn_edu_get_enrollments_safe($user_id);
-
-    if (!is_array($backup)) {
-        $backup = array();
-    }
-
-    // Merge backup and current (keeps all enrollments from both)
-    $merged = array_unique(array_merge($current, $backup));
-    $merged = array_values($merged);
-
-    $recovered = array_diff($backup, $current);
-
-    if (!empty($recovered)) {
-        // Create new backup before merge
-        if (!empty($current)) {
-            update_user_meta($user_id, 'snn_edu_enrolled_posts_backup', $current);
-            update_user_meta($user_id, 'snn_edu_enrolled_posts_backup_time', current_time('mysql'));
-        }
-
-        update_user_meta($user_id, 'snn_edu_enrolled_posts', $merged);
-        error_log("SNN EDU ADMIN: Merged backup for user {$user_id}. Recovered " . count($recovered) . " enrollments.");
-    }
-
-    return array(
-        'success' => true,
-        'message' => empty($recovered) ? 'No additional enrollments to recover' : 'Enrollments merged successfully',
-        'recovered' => array_values($recovered),
-        'recovered_count' => count($recovered),
-        'total_count' => count($merged),
-        'all_enrollments' => $merged
-    );
-}
 
 /**
  * Permission callback - check if feature is enabled and user is logged in
@@ -1034,13 +926,13 @@ function snn_edu_get_all_ancestors($post_id) {
 /**
  * Unenroll user from a post (remove post_id from user meta)
  *
- * CRITICAL: Uses safe unenrollment function with backup
+ * CRITICAL: Unenrollment is disabled to prevent data loss
  */
 function snn_edu_user_meta_unenroll_user($request) {
     $post_id = $request->get_param('post_id');
     $user_id = get_current_user_id();
 
-    // Use the SAFE unenrollment function (creates backup before removing)
+    // Use the SAFE unenrollment function (returns error - unenrollment is disabled)
     return snn_edu_remove_enrollment_safe($user_id, absint($post_id));
 }
 
@@ -1088,14 +980,6 @@ add_action('load-profile.php', 'snn_edu_user_meta_add_meta_box');
 function snn_edu_user_meta_render_meta_box($user) {
     // Use safe retrieval method
     $enrollments = snn_edu_get_enrollments_safe($user->ID);
-
-    // Show backup info for admins
-    $backup = get_user_meta($user->ID, 'snn_edu_enrolled_posts_backup', true);
-    $backup_time = get_user_meta($user->ID, 'snn_edu_enrolled_posts_backup_time', true);
-
-    if (is_array($backup) && !empty($backup) && $backup_time) {
-        echo '<p style="color: #666; font-size: 12px; margin-bottom: 10px;">Last backup: ' . esc_html($backup_time) . ' (' . count($backup) . ' enrollments)</p>';
-    }
 
     if (empty($enrollments)) {
         echo '<p>No enrollments yet.</p>';
