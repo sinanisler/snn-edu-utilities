@@ -3,7 +3,7 @@
  * Plugin Name: SNN Edu Utilities
  * Plugin URI: https://github.com/sinanisler/snn-edu-utilities
  * Description: Educational utilities including admin restrictions, dashboard notepad, and custom author permalinks with role-based URLs.
- * Version: 1.4
+ * Version: 1.3
  * Author: sinanisler
  * Author URI: https://github.com/sinanisler
  * License: GPL v2 or later
@@ -643,272 +643,82 @@ register_deactivation_hook(__FILE__, 'snn_edu_deactivate');
  */
 
 /**
- * CRITICAL: Safe enrollment data retrieval with protection against data loss
- * This function NEVER returns empty if user has existing enrollments
- * Always reads fresh from database to prevent stale cache issues
+ * Get user enrollments safely
+ * Uses WordPress native get_user_meta (scales with object caching)
  *
  * @param int $user_id The user ID
- * @return array The enrollments array (never false, always array)
+ * @return array The enrollments array (always returns array, never false)
  */
 function snn_edu_get_enrollments_safe($user_id) {
-    global $wpdb;
+    $enrollments = get_user_meta($user_id, 'snn_edu_enrolled_posts', true);
 
-    // ALWAYS get directly from database first to bypass any cache issues
-    $meta_value = $wpdb->get_var($wpdb->prepare(
-        "SELECT meta_value FROM {$wpdb->usermeta} WHERE user_id = %d AND meta_key = %s LIMIT 1",
-        $user_id,
-        'snn_edu_enrolled_posts'
-    ));
-
-    if ($meta_value !== null && $meta_value !== '') {
-        // Try to unserialize
-        $unserialized = @maybe_unserialize($meta_value);
-        if (is_array($unserialized)) {
-            // Ensure all values are integers
-            return array_values(array_map('intval', $unserialized));
-        }
-
-        // Data exists but is corrupted - LOG THIS
-        error_log("SNN EDU CRITICAL: Corrupted enrollment data for user {$user_id}. Raw value: " . substr($meta_value, 0, 500));
-
-        // Try backup meta directly from database
-        $backup_value = $wpdb->get_var($wpdb->prepare(
-            "SELECT meta_value FROM {$wpdb->usermeta} WHERE user_id = %d AND meta_key = %s LIMIT 1",
-            $user_id,
-            'snn_edu_enrolled_posts_backup'
-        ));
-
-        if ($backup_value !== null && $backup_value !== '') {
-            $backup_unserialized = @maybe_unserialize($backup_value);
-            if (is_array($backup_unserialized) && !empty($backup_unserialized)) {
-                error_log("SNN EDU RECOVERY: Using backup enrollments for user {$user_id}");
-                // Also restore the main field from backup
-                update_user_meta($user_id, 'snn_edu_enrolled_posts', $backup_unserialized);
-                return array_values(array_map('intval', $backup_unserialized));
-            }
-        }
+    if (is_array($enrollments)) {
+        return array_values(array_map('intval', $enrollments));
     }
 
-    // No data exists - this is a new user, return empty array
     return array();
 }
 
 /**
- * CRITICAL: Safe enrollment update with race condition protection and backup
- * NEVER decreases enrollment count unless explicitly requested
- *
- * Uses atomic database operation to prevent race conditions
+ * Safe enrollment - ONLY ADDS, never removes
+ * Simple and bulletproof: merge new IDs with existing, duplicates handled by array_unique
+ * Even with race conditions, data can never be lost
  *
  * @param int $user_id The user ID
- * @param array $new_post_ids Array of post IDs to ADD (not replace)
+ * @param array $new_post_ids Array of post IDs to ADD
  * @return array Result with success status and final enrollments
  */
 function snn_edu_add_enrollments_safe($user_id, $new_post_ids) {
-    global $wpdb;
-
     if (!is_array($new_post_ids)) {
         return array('success' => false, 'error' => 'Invalid post IDs');
     }
 
     // Sanitize all post IDs
     $new_post_ids = array_map('absint', $new_post_ids);
-    $new_post_ids = array_filter($new_post_ids); // Remove zeros
+    $new_post_ids = array_filter($new_post_ids);
 
     if (empty($new_post_ids)) {
         return array('success' => false, 'error' => 'No valid post IDs to add');
     }
 
-    // Use atomic database lock to prevent race conditions
-    $lock_key = 'snn_edu_lock_' . $user_id;
-    $lock_value = uniqid('lock_', true);
-    $lock_acquired = false;
-    $max_attempts = 30;
-    $attempts = 0;
+    // Get current enrollments
+    $current_enrollments = snn_edu_get_enrollments_safe($user_id);
 
-    // Try to acquire lock using atomic INSERT (fails if exists)
-    while (!$lock_acquired && $attempts < $max_attempts) {
-        // Delete expired locks (older than 10 seconds)
-        $wpdb->query($wpdb->prepare(
-            "DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value < %s",
-            $lock_key,
-            time() - 10
-        ));
+    // ONLY ADD - merge new IDs with existing (array_unique prevents duplicates)
+    $merged_enrollments = array_unique(array_merge($current_enrollments, $new_post_ids));
+    $merged_enrollments = array_map('intval', $merged_enrollments);
+    $merged_enrollments = array_values($merged_enrollments);
 
-        // Try atomic insert
-        $result = $wpdb->query($wpdb->prepare(
-            "INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')",
-            $lock_key,
-            time()
-        ));
+    // Determine what was actually added
+    $actually_added = array_values(array_diff($merged_enrollments, $current_enrollments));
 
-        if ($result) {
-            $lock_acquired = true;
-        } else {
-            usleep(100000); // Wait 100ms
-            $attempts++;
-        }
+    // Update only if there are new enrollments
+    if (!empty($actually_added)) {
+        update_user_meta($user_id, 'snn_edu_enrolled_posts', $merged_enrollments);
     }
 
-    if (!$lock_acquired) {
-        error_log("SNN EDU WARNING: Could not acquire lock for user {$user_id} after {$attempts} attempts. Proceeding with extra caution.");
-    }
-
-    try {
-        // CRITICAL: Read fresh from database, bypassing all caches
-        wp_cache_delete($user_id, 'user_meta');
-
-        // Get current enrollments SAFELY with fresh read
-        $current_enrollments = snn_edu_get_enrollments_safe($user_id);
-        $original_count = count($current_enrollments);
-
-        // Create backup before modifying (only if there's existing data)
-        if (!empty($current_enrollments)) {
-            update_user_meta($user_id, 'snn_edu_enrolled_posts_backup', $current_enrollments);
-            update_user_meta($user_id, 'snn_edu_enrolled_posts_backup_time', current_time('mysql'));
-        }
-
-        // Merge new enrollments (ONLY ADD, never remove)
-        $merged_enrollments = array_unique(array_merge($current_enrollments, $new_post_ids));
-        $merged_enrollments = array_map('intval', $merged_enrollments); // Ensure all integers
-        $merged_enrollments = array_values($merged_enrollments); // Re-index
-
-        // CRITICAL SAFETY CHECK: New count should NEVER be less than original
-        if (count($merged_enrollments) < $original_count) {
-            error_log("SNN EDU CRITICAL: Attempted to reduce enrollments for user {$user_id} from {$original_count} to " . count($merged_enrollments) . ". BLOCKED!");
-            $wpdb->delete($wpdb->options, array('option_name' => $lock_key));
-            return array(
-                'success' => false,
-                'error' => 'Safety check failed - enrollment count would decrease',
-                'original_count' => $original_count
-            );
-        }
-
-        // Determine what was actually added
-        $actually_added = array_values(array_diff($merged_enrollments, $current_enrollments));
-
-        // Only update if there are new enrollments
-        if (!empty($actually_added)) {
-            // Clear cache before update
-            wp_cache_delete($user_id, 'user_meta');
-
-            update_user_meta($user_id, 'snn_edu_enrolled_posts', $merged_enrollments);
-
-            // Verify the update was successful
-            wp_cache_delete($user_id, 'user_meta');
-            $verify = get_user_meta($user_id, 'snn_edu_enrolled_posts', true);
-
-            if (!is_array($verify) || count($verify) < count($merged_enrollments)) {
-                error_log("SNN EDU CRITICAL: Verification failed after update for user {$user_id}. Expected " . count($merged_enrollments) . " got " . (is_array($verify) ? count($verify) : 'non-array'));
-
-                // Re-read from backup and merge everything
-                $backup = get_user_meta($user_id, 'snn_edu_enrolled_posts_backup', true);
-                if (is_array($backup)) {
-                    $restored = array_unique(array_merge($backup, $current_enrollments, $new_post_ids));
-                    $restored = array_map('intval', $restored);
-                    $restored = array_values($restored);
-                    update_user_meta($user_id, 'snn_edu_enrolled_posts', $restored);
-                    $merged_enrollments = $restored;
-                }
-            }
-        }
-
-        // Release lock
-        $wpdb->delete($wpdb->options, array('option_name' => $lock_key));
-
-        return array(
-            'success' => true,
-            'added' => $actually_added,
-            'total_count' => count($merged_enrollments),
-            'all_enrollments' => $merged_enrollments
-        );
-
-    } catch (Exception $e) {
-        $wpdb->delete($wpdb->options, array('option_name' => $lock_key));
-        error_log("SNN EDU ERROR: Exception during enrollment for user {$user_id}: " . $e->getMessage());
-        return array('success' => false, 'error' => $e->getMessage());
-    }
+    return array(
+        'success' => true,
+        'added' => $actually_added,
+        'total_count' => count($merged_enrollments),
+        'all_enrollments' => $merged_enrollments
+    );
 }
 
 /**
- * Safe unenrollment with protection and locking
+ * Unenrollment is DISABLED to prevent data loss
+ * Enrollments are permanent - once enrolled, always enrolled
  *
  * @param int $user_id The user ID
- * @param int $post_id The post ID to remove
- * @return array Result
+ * @param int $post_id The post ID
+ * @return array Error response
  */
 function snn_edu_remove_enrollment_safe($user_id, $post_id) {
-    global $wpdb;
-
-    $post_id = absint($post_id);
-
-    // Use atomic database lock (same as enroll)
-    $lock_key = 'snn_edu_lock_' . $user_id;
-    $lock_acquired = false;
-    $max_attempts = 30;
-    $attempts = 0;
-
-    while (!$lock_acquired && $attempts < $max_attempts) {
-        $wpdb->query($wpdb->prepare(
-            "DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value < %s",
-            $lock_key,
-            time() - 10
-        ));
-
-        $result = $wpdb->query($wpdb->prepare(
-            "INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')",
-            $lock_key,
-            time()
-        ));
-
-        if ($result) {
-            $lock_acquired = true;
-        } else {
-            usleep(100000);
-            $attempts++;
-        }
-    }
-
-    try {
-        // Clear cache and get fresh data
-        wp_cache_delete($user_id, 'user_meta');
-        $enrollments = snn_edu_get_enrollments_safe($user_id);
-
-        if (empty($enrollments)) {
-            $wpdb->delete($wpdb->options, array('option_name' => $lock_key));
-            return array('success' => false, 'message' => 'No enrollments found');
-        }
-
-        // Backup before modifying
-        update_user_meta($user_id, 'snn_edu_enrolled_posts_backup', $enrollments);
-        update_user_meta($user_id, 'snn_edu_enrolled_posts_backup_time', current_time('mysql'));
-
-        $key = array_search($post_id, $enrollments, true);
-
-        if ($key !== false) {
-            unset($enrollments[$key]);
-            $enrollments = array_map('intval', $enrollments);
-            $enrollments = array_values($enrollments);
-
-            wp_cache_delete($user_id, 'user_meta');
-            update_user_meta($user_id, 'snn_edu_enrolled_posts', $enrollments);
-
-            $wpdb->delete($wpdb->options, array('option_name' => $lock_key));
-
-            return array(
-                'success' => true,
-                'message' => 'Successfully unenrolled',
-                'post_id' => $post_id,
-                'enrolled_count' => count($enrollments)
-            );
-        }
-
-        $wpdb->delete($wpdb->options, array('option_name' => $lock_key));
-        return array('success' => false, 'message' => 'Not enrolled', 'post_id' => $post_id);
-
-    } catch (Exception $e) {
-        $wpdb->delete($wpdb->options, array('option_name' => $lock_key));
-        return array('success' => false, 'message' => $e->getMessage());
-    }
+    return array(
+        'success' => false,
+        'message' => 'Unenrollment is disabled to protect user data',
+        'post_id' => absint($post_id)
+    );
 }
 
 /**
