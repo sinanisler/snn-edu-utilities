@@ -1,9 +1,6 @@
 <?php
 
-// Certificate Hash Salt - Change this to a unique random string
-if ( ! defined( 'SNN_CERTIFICATE_SALT' ) ) {
-    define( 'SNN_CERTIFICATE_SALT', 'NkxUX5qW8QVycLc3wdotwIxiZymyCmydKAgKEeaZtQfSErqE8Qikuh' );
-}
+
 
 /**
  * Custom Dynamic Data Tag: Current Course Enrollment Percentage
@@ -1107,7 +1104,7 @@ function snn_generate_certificate_hash( $post_id = null ) {
     }
 
     // Combine inputs into one string with salt to prevent brute force
-    $input = $user_id . ':' . $post_id . ':' . SNN_CERTIFICATE_SALT;
+    $input = $user_id . ':' . $post_id . ':' . 'NkxUX5qW8QVycLc3wdotwIxiZymyCmydKAgKEeaZtQfSErqE8Qikuh';
 
     // Define available characters (letters and numbers only)
     $chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
