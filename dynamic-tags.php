@@ -971,3 +971,164 @@ function snn_edu_replace_parent_and_child_list_in_content($content, $post, $cont
 
     return $content;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * Custom Dynamic Data Tag: Current User Current Course Certificate Hash
+ * Returns a deterministic 32-character hash based on user ID and course ID
+ *
+ * Usage:
+ * {current_user_current_course_certificate_hash} - Returns a unique hash (e.g., "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6")
+ *
+ */
+
+// Step 1: Register the tag in the builder
+add_filter( 'bricks/dynamic_tags_list', 'snn_add_certificate_hash_tag' );
+function snn_add_certificate_hash_tag( $tags ) {
+    $tags[] = [
+        'name'  => '{current_user_current_course_certificate_hash}',
+        'label' => 'Current User Current Course Certificate Hash',
+        'group' => 'SNN Edu',
+    ];
+
+    return $tags;
+}
+
+// Step 2: Render the tag value (for individual tag parsing)
+add_filter( 'bricks/dynamic_data/render_tag', 'snn_get_certificate_hash_value', 20, 3 );
+function snn_get_certificate_hash_value( $tag, $post, $context = 'text' ) {
+    // Ensure $tag is a string
+    if ( ! is_string( $tag ) ) {
+        return $tag;
+    }
+
+    // Clean the tag (remove curly braces)
+    $clean_tag = str_replace( [ '{', '}' ], '', $tag );
+
+    // Only process our specific tag
+    if ( $clean_tag !== 'current_user_current_course_certificate_hash' ) {
+        return $tag;
+    }
+
+    // Get the correct post ID from context
+    $post_id = null;
+    if ( is_object( $post ) && isset( $post->ID ) ) {
+        $post_id = $post->ID;
+    } elseif ( is_numeric( $post ) && $post > 0 ) {
+        $post_id = (int) $post;
+    }
+
+    // Fallback: try get_queried_object_id() first, then get_the_ID()
+    if ( ! $post_id ) {
+        $post_id = get_queried_object_id();
+    }
+    if ( ! $post_id ) {
+        $post_id = get_the_ID();
+    }
+
+    // Generate the certificate hash
+    $value = snn_generate_certificate_hash( $post_id );
+
+    return $value;
+}
+
+// Step 3: Render in content (for content with multiple tags)
+add_filter( 'bricks/dynamic_data/render_content', 'snn_render_certificate_hash_tag', 20, 3 );
+add_filter( 'bricks/frontend/render_data', 'snn_render_certificate_hash_tag', 20, 3 );
+function snn_render_certificate_hash_tag( $content, $post, $context = 'text' ) {
+
+    // Only process if our tag exists in content
+    if ( strpos( $content, '{current_user_current_course_certificate_hash}' ) === false ) {
+        return $content;
+    }
+
+    // Get the correct post ID from context
+    $post_id = null;
+    if ( is_object( $post ) && isset( $post->ID ) ) {
+        $post_id = $post->ID;
+    } elseif ( is_numeric( $post ) && $post > 0 ) {
+        $post_id = (int) $post;
+    }
+
+    // Fallback: try get_queried_object_id() first, then get_the_ID()
+    if ( ! $post_id ) {
+        $post_id = get_queried_object_id();
+    }
+    if ( ! $post_id ) {
+        $post_id = get_the_ID();
+    }
+
+    // Generate the certificate hash
+    $value = snn_generate_certificate_hash( $post_id );
+
+    // Replace the tag with the value
+    $content = str_replace( '{current_user_current_course_certificate_hash}', $value, $content );
+
+    return $content;
+}
+
+// Helper function to generate deterministic certificate hash
+function snn_generate_certificate_hash( $post_id = null ) {
+    // Get current post ID with multiple fallbacks
+    if ( ! $post_id ) {
+        $post_id = get_queried_object_id();
+    }
+    if ( ! $post_id ) {
+        $post_id = get_the_ID();
+    }
+
+    if ( ! $post_id ) {
+        return '';
+    }
+
+    // Get current user ID
+    $user_id = get_current_user_id();
+
+    if ( ! $user_id ) {
+        return '';
+    }
+
+    // Combine inputs into one string
+    $input = $user_id . ':' . $post_id;
+
+    // Define available characters (letters and numbers only)
+    $chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+    $chars_length = strlen( $chars );
+
+    // Step 1: Create a numeric seed from the input string using DJB2 algorithm logic
+    $numeric_seed = 0;
+    $input_length = strlen( $input );
+
+    for ( $i = 0; $i < $input_length; $i++ ) {
+        // Bitwise operations to create a unique number based on characters
+        $numeric_seed = ( ( $numeric_seed << 5 ) - $numeric_seed ) + ord( $input[ $i ] );
+        // Keep it as a 32-bit integer
+        $numeric_seed = $numeric_seed & 0xFFFFFFFF;
+    }
+
+    // Step 2: Generate 32 characters using a Linear Congruential Generator (LCG)
+    $result = '';
+    $current_seed = abs( $numeric_seed );
+
+    for ( $i = 0; $i < 32; $i++ ) {
+        // Standard LCG constants to scramble the number further each step
+        $current_seed = ( $current_seed * 1664525 + 1013904223 ) % 4294967296;
+        // Pick a character based on the current state of the seed
+        $result .= $chars[ $current_seed % $chars_length ];
+    }
+
+    return $result;
+}
