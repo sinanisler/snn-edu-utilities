@@ -496,38 +496,35 @@ function snn_edu_user_meta_tracking_callback() {
     $options = get_option('snn_edu_settings', array());
     $checked = isset($options['enable_user_meta_tracking']) && $options['enable_user_meta_tracking'] ? 'checked' : '';
     echo '<input type="checkbox" name="snn_edu_settings[enable_user_meta_tracking]" value="1" ' . $checked . '>';
-    echo '<p class="description">Enables video enrollment and completion tracking system that saves user progress to custom fields:</p>';
+    echo '<p class="description">Enables video enrollment tracking system that saves user progress to custom fields:</p>';
     echo '<ul style="list-style: disc; margin-left: 20px;">';
-    echo '<li><strong>REST API Endpoints (Enrollment):</strong> <code>/wp-json/snn-edu/v1/enroll</code>, <code>/wp-json/snn-edu/v1/unenroll</code>, <code>/wp-json/snn-edu/v1/enrollments</code></li>';
-    echo '<li><strong>REST API Endpoints (Completion):</strong> <code>/wp-json/snn-edu/v1/complete</code>, <code>/wp-json/snn-edu/v1/completions</code></li>';
-    echo '<li><strong>User Meta Fields:</strong> Stores enrolled post IDs in <code>snn_edu_enrolled_posts</code> and completed post IDs in <code>snn_edu_completed_posts</code> as arrays</li>';
+    echo '<li><strong>REST API Endpoints:</strong> <code>/wp-json/snn-edu/v1/enroll</code>, <code>/wp-json/snn-edu/v1/unenroll</code>, <code>/wp-json/snn-edu/v1/enrollments</code></li>';
+    echo '<li><strong>User Meta Field:</strong> Stores enrolled post IDs in <code>snn_edu_enrolled_posts</code> as an array</li>';
     echo '<li><strong>Shortcode:</strong> Use <code>[snn_video_tracker]</code> to auto-enroll users when video events fire</li>';
     echo '<li><strong>Shortcode Parameters:</strong> <code>events="both|started|completed"</code> (default: both), <code>post_id="123"</code> (optional), <code>debug="true|false"</code></li>';
     echo '<li><strong>JavaScript Events:</strong> Listens to <code>snn_video_started</code> and/or <code>snn_video_completed</code> custom events (both by default)</li>';
     echo '<li><strong>Post ID Detection:</strong> Automatically gets the correct post ID from video events, works with parent/child page hierarchies</li>';
     echo '<li><strong>Parent Enrollment:</strong> When enrolling in a child post, automatically enrolls in ALL ancestor parents (immediate parent, grandparent, etc. up to top-level)</li>';
-    echo '<li><strong>Admin Meta Boxes:</strong> View enrolled courses and completed courses in user profile edit page</li>';
+    echo '<li><strong>Admin Meta Box:</strong> View enrolled courses in user profile edit page</li>';
     echo '<li><strong>Security:</strong> Only works for logged-in users, sanitizes all post IDs (integers only)</li>';
     echo '</ul>';
     echo '<p class="description"><strong>JavaScript Usage Example:</strong></p>';
     echo '<pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto;">
-// Enrollment functions
+// Listen for video completion event
+document.addEventListener(\'snn_video_completed\', function(event) {
+    const postId = event.detail.post_id;
+
+    // Automatically enroll user via REST API
+    snnEduEnrollUser(postId).then(response => {
+        console.log(\'User enrolled!\', response);
+    });
+});
+
+// Or manually enroll/unenroll
 snnEduEnrollUser(123);      // Enroll in post 123
 snnEduUnenrollUser(123);    // Unenroll from post 123
 snnEduGetEnrollments();     // Get all enrollments
 snnEduIsEnrolled(123);      // Check if enrolled
-
-// Completion functions
-snnEduCompletePost(123);    // Mark post 123 as completed (when course is 100%)
-snnEduGetCompletions();     // Get all completed posts
-snnEduIsCompleted(123);     // Check if post is completed
-
-// Example: Mark as complete when course reaches 100%
-if (courseProgress === 100) {
-    snnEduCompletePost(postId).then(response => {
-        console.log(\'Course completed!\', response);
-    });
-}
 </pre>';
 }
 
@@ -664,23 +661,6 @@ function snn_edu_get_enrollments_safe($user_id) {
 }
 
 /**
- * Get user completions safely
- * Uses WordPress native get_user_meta (scales with object caching)
- *
- * @param int $user_id The user ID
- * @return array The completions array (always returns array, never false)
- */
-function snn_edu_get_completions_safe($user_id) {
-    $completions = get_user_meta($user_id, 'snn_edu_completed_posts', true);
-
-    if (is_array($completions)) {
-        return array_values(array_map('intval', $completions));
-    }
-
-    return array();
-}
-
-/**
  * Safe enrollment - ONLY ADDS, never removes
  * Simple and bulletproof: merge new IDs with existing, duplicates handled by array_unique
  * Even with race conditions, data can never be lost
@@ -727,52 +707,6 @@ function snn_edu_add_enrollments_safe($user_id, $new_post_ids) {
 }
 
 /**
- * Safe completion - ONLY ADDS, never removes
- * Simple and bulletproof: merge new IDs with existing, duplicates handled by array_unique
- * Even with race conditions, data can never be lost
- *
- * @param int $user_id The user ID
- * @param array $new_post_ids Array of post IDs to ADD as completed
- * @return array Result with success status and final completions
- */
-function snn_edu_add_completions_safe($user_id, $new_post_ids) {
-    if (!is_array($new_post_ids)) {
-        return array('success' => false, 'error' => 'Invalid post IDs');
-    }
-
-    // Sanitize all post IDs
-    $new_post_ids = array_map('absint', $new_post_ids);
-    $new_post_ids = array_filter($new_post_ids);
-
-    if (empty($new_post_ids)) {
-        return array('success' => false, 'error' => 'No valid post IDs to add');
-    }
-
-    // Get current completions
-    $current_completions = snn_edu_get_completions_safe($user_id);
-
-    // ONLY ADD - merge new IDs with existing (array_unique prevents duplicates)
-    $merged_completions = array_unique(array_merge($current_completions, $new_post_ids));
-    $merged_completions = array_map('intval', $merged_completions);
-    $merged_completions = array_values($merged_completions);
-
-    // Determine what was actually added
-    $actually_added = array_values(array_diff($merged_completions, $current_completions));
-
-    // Update only if there are new completions
-    if (!empty($actually_added)) {
-        update_user_meta($user_id, 'snn_edu_completed_posts', $merged_completions);
-    }
-
-    return array(
-        'success' => true,
-        'added' => $actually_added,
-        'total_count' => count($merged_completions),
-        'all_completions' => $merged_completions
-    );
-}
-
-/**
  * Unenrollment is DISABLED to prevent data loss
  * Enrollments are permanent - once enrolled, always enrolled
  *
@@ -804,7 +738,7 @@ function snn_edu_is_post_type_allowed($post_type) {
 }
 
 /**
- * Register REST API routes for user enrollment and completion tracking
+ * Register REST API routes for user enrollment tracking
  */
 function snn_edu_user_meta_register_routes() {
     register_rest_route('snn-edu/v1', '/enroll', array(
@@ -840,27 +774,6 @@ function snn_edu_user_meta_register_routes() {
     register_rest_route('snn-edu/v1', '/enrollments', array(
         'methods' => 'GET',
         'callback' => 'snn_edu_user_meta_get_enrollments',
-        'permission_callback' => 'snn_edu_user_meta_check_permission',
-    ));
-
-    register_rest_route('snn-edu/v1', '/complete', array(
-        'methods' => 'POST',
-        'callback' => 'snn_edu_user_meta_complete_post',
-        'permission_callback' => 'snn_edu_user_meta_check_permission',
-        'args' => array(
-            'post_id' => array(
-                'required' => true,
-                'validate_callback' => function($param) {
-                    return is_numeric($param) && intval($param) > 0;
-                },
-                'sanitize_callback' => 'absint',
-            ),
-        ),
-    ));
-
-    register_rest_route('snn-edu/v1', '/completions', array(
-        'methods' => 'GET',
-        'callback' => 'snn_edu_user_meta_get_completions',
         'permission_callback' => 'snn_edu_user_meta_check_permission',
     ));
 }
@@ -1043,183 +956,7 @@ function snn_edu_user_meta_get_enrollments($request) {
 }
 
 /**
- * Check if all children of a parent post are completed
- * Uses WordPress get_children() for efficiency
- *
- * @param int $parent_id The parent post ID
- * @param int $user_id The user ID
- * @return bool True if all children are completed, false otherwise
- */
-function snn_edu_are_all_children_completed($parent_id, $user_id) {
-    // Get all published children of this parent using WordPress function
-    $children = get_children(array(
-        'post_parent' => $parent_id,
-        'post_type' => 'any',
-        'post_status' => 'publish',
-        'numberposts' => -1,
-    ));
-
-    // If no children, return false (can't be completed by children)
-    if (empty($children)) {
-        return false;
-    }
-
-    // Get user's completed posts
-    $completed_posts = snn_edu_get_completions_safe($user_id);
-
-    // Check if ALL children are in the completed list
-    foreach ($children as $child) {
-        if (!in_array($child->ID, $completed_posts)) {
-            return false; // Found a child that's not completed
-        }
-    }
-
-    // All children are completed!
-    return true;
-}
-
-/**
- * Recursively mark parent and grandparents as completed if all their children are completed
- * OPTIMIZATION: Once a parent is already marked complete, we skip checking its children
- *
- * @param int $post_id The post ID to check parents for
- * @param int $user_id The user ID
- * @return array Array of parent IDs that were marked as completed
- */
-function snn_edu_auto_complete_parents($post_id, $user_id) {
-    $completed_parents = array();
-    $current_post = get_post($post_id);
-
-    // No parent to check
-    if (!$current_post || $current_post->post_parent == 0) {
-        return $completed_parents;
-    }
-
-    $parent_id = $current_post->post_parent;
-    $parent_post = get_post($parent_id);
-
-    // Parent doesn't exist
-    if (!$parent_post) {
-        return $completed_parents;
-    }
-
-    // Get current completions
-    $user_completions = snn_edu_get_completions_safe($user_id);
-
-    // OPTIMIZATION: If parent is already completed, skip checking children
-    if (in_array($parent_id, $user_completions)) {
-        return $completed_parents; // Already completed, no need to check
-    }
-
-    // Check if all children of this parent are completed
-    if (snn_edu_are_all_children_completed($parent_id, $user_id)) {
-        // All siblings are completed! Mark parent as complete
-        $result = snn_edu_add_completions_safe($user_id, array($parent_id));
-
-        if ($result['success'] && !empty($result['added'])) {
-            $completed_parents[] = $parent_id;
-
-            // Recursively check grandparents (move up the hierarchy)
-            $grandparent_completions = snn_edu_auto_complete_parents($parent_id, $user_id);
-            $completed_parents = array_merge($completed_parents, $grandparent_completions);
-        }
-    }
-
-    return $completed_parents;
-}
-
-/**
- * Mark a post as completed for current user
- * SMART: Automatically marks parent/grandparents as complete if all siblings are done
- * EDGE CASE HANDLING: Works even when lessons are completed in random order
- *
- * CRITICAL: Uses safe completion functions to prevent data loss
- */
-function snn_edu_user_meta_complete_post($request) {
-    $post_id = $request->get_param('post_id');
-    $user_id = get_current_user_id();
-
-    // Verify post exists
-    $post = get_post($post_id);
-    if (!$post) {
-        return new WP_Error(
-            'invalid_post',
-            'Post does not exist',
-            array('status' => 404)
-        );
-    }
-
-    // Check if post type is allowed for enrollment/completion
-    if (!snn_edu_is_post_type_allowed($post->post_type)) {
-        return new WP_Error(
-            'post_type_not_allowed',
-            'This post type is not allowed for completion tracking. Please check the plugin settings.',
-            array('status' => 403)
-        );
-    }
-
-    $post_id_int = absint($post_id);
-
-    // Use the SAFE completion function (prevents data loss, handles race conditions)
-    $result = snn_edu_add_completions_safe($user_id, array($post_id_int));
-
-    if ($result['success']) {
-        if (!empty($result['added'])) {
-            // Post was newly marked as completed
-
-            // SMART: Check if this completion triggers parent completions
-            // This handles random order completion - checks all siblings each time
-            $auto_completed_parents = snn_edu_auto_complete_parents($post_id_int, $user_id);
-
-            return array(
-                'success' => true,
-                'message' => 'Successfully marked as completed',
-                'post_id' => $post_id_int,
-                'completed_posts' => $result['added'],
-                'completed_count' => $result['total_count'],
-                'all_completions' => $result['all_completions'],
-                'auto_completed_parents' => $auto_completed_parents, // Parents that were auto-completed
-            );
-        } else {
-            // Get current completions for response
-            $current = snn_edu_get_completions_safe($user_id);
-            return array(
-                'success' => false,
-                'message' => 'Already marked as completed',
-                'post_id' => $post_id_int,
-                'current_completions' => $current,
-            );
-        }
-    }
-
-    // Error occurred
-    return new WP_Error(
-        'completion_failed',
-        isset($result['error']) ? $result['error'] : 'Completion tracking failed',
-        array('status' => 500)
-    );
-}
-
-/**
- * Get all completions for current user
- *
- * CRITICAL: Uses safe retrieval function
- */
-function snn_edu_user_meta_get_completions($request) {
-    $user_id = get_current_user_id();
-
-    // Use the SAFE completion retrieval function
-    $completions = snn_edu_get_completions_safe($user_id);
-
-    return array(
-        'success' => true,
-        'completions' => $completions,
-        'count' => count($completions),
-    );
-}
-
-/**
- * Add custom meta boxes to user edit screen
+ * Add custom meta box to user edit screen
  */
 function snn_edu_user_meta_add_meta_box() {
     if (!snn_edu_get_option('enable_user_meta_tracking', false)) {
@@ -1229,16 +966,7 @@ function snn_edu_user_meta_add_meta_box() {
     add_meta_box(
         'snn_edu_user_enrollments',
         'Course Enrollments',
-        'snn_edu_user_meta_render_enrollments_meta_box',
-        'user-edit',
-        'normal',
-        'high'
-    );
-
-    add_meta_box(
-        'snn_edu_user_completions',
-        'Course Completions',
-        'snn_edu_user_meta_render_completions_meta_box',
+        'snn_edu_user_meta_render_meta_box',
         'user-edit',
         'normal',
         'high'
@@ -1248,9 +976,9 @@ add_action('load-user-edit.php', 'snn_edu_user_meta_add_meta_box');
 add_action('load-profile.php', 'snn_edu_user_meta_add_meta_box');
 
 /**
- * Render the enrollments meta box content
+ * Render the meta box content
  */
-function snn_edu_user_meta_render_enrollments_meta_box($user) {
+function snn_edu_user_meta_render_meta_box($user) {
     // Use safe retrieval method
     $enrollments = snn_edu_get_enrollments_safe($user->ID);
 
@@ -1310,74 +1038,6 @@ function snn_edu_user_meta_render_enrollments_meta_box($user) {
             margin-top: 10px;
         }
         .snn-edu-enrollments th {
-            font-weight: 600;
-        }
-    </style>';
-}
-
-/**
- * Render the completions meta box content
- */
-function snn_edu_user_meta_render_completions_meta_box($user) {
-    // Use safe retrieval method
-    $completions = snn_edu_get_completions_safe($user->ID);
-
-    if (empty($completions)) {
-        echo '<p>No completed courses yet.</p>';
-        return;
-    }
-
-    echo '<div class="snn-edu-completions">';
-    echo '<p><strong>Total Completions:</strong> ' . count($completions) . '</p>';
-    echo '<table class="widefat striped">';
-    echo '<thead>';
-    echo '<tr>';
-    echo '<th>Post ID</th>';
-    echo '<th>Post Title</th>';
-    echo '<th>Post Type</th>';
-    echo '<th>Status</th>';
-    echo '<th>Actions</th>';
-    echo '</tr>';
-    echo '</thead>';
-    echo '<tbody>';
-
-    foreach ($completions as $post_id) {
-        $post = get_post($post_id);
-
-        if ($post) {
-            $edit_link = get_edit_post_link($post_id);
-            $view_link = get_permalink($post_id);
-
-            echo '<tr>';
-            echo '<td>' . intval($post_id) . '</td>';
-            echo '<td><a href="' . esc_url($edit_link) . '" target="_blank">' . esc_html($post->post_title) . '</a></td>';
-            echo '<td>' . esc_html($post->post_type) . '</td>';
-            echo '<td>' . esc_html($post->post_status) . '</td>';
-            echo '<td>';
-            echo '<a href="' . esc_url($view_link) . '" target="_blank" class="button button-small">View</a> ';
-            echo '<a href="' . esc_url($edit_link) . '" target="_blank" class="button button-small">Edit</a>';
-            echo '</td>';
-            echo '</tr>';
-        } else {
-            echo '<tr>';
-            echo '<td>' . intval($post_id) . '</td>';
-            echo '<td colspan="4"><em>Post not found (may be deleted)</em></td>';
-            echo '</tr>';
-        }
-    }
-
-    echo '</tbody>';
-    echo '</table>';
-    echo '</div>';
-
-    echo '<style>
-        .snn-edu-completions {
-            margin: 15px 0;
-        }
-        .snn-edu-completions table {
-            margin-top: 10px;
-        }
-        .snn-edu-completions th {
             font-weight: 600;
         }
     </style>';
@@ -1533,84 +1193,6 @@ function snn_edu_user_meta_inline_script() {
                 .then(data => {
                     if (data.success && data.enrollments) {
                         return data.enrollments.includes(parseInt(postId));
-                    }
-                    return false;
-                });
-        };
-
-        /**
-         * Mark a post as completed via REST API
-         */
-        window.snnEduCompletePost = function(postId, debug = false) {
-            if (!postId || !Number.isInteger(parseInt(postId))) {
-                if (debug) console.error('SNN Edu: Invalid post ID', postId);
-                return Promise.reject('Invalid post ID');
-            }
-
-            const completionData = {
-                post_id: parseInt(postId)
-            };
-
-            return fetch(snnEduUserMeta.restUrl + 'complete', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-WP-Nonce': snnEduUserMeta.nonce
-                },
-                body: JSON.stringify(completionData)
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    if (debug) console.log('✅ SNN Edu: Successfully marked post as completed', postId);
-
-                    // Dispatch custom event for other scripts to listen
-                    document.dispatchEvent(new CustomEvent('snn_edu_completed', {
-                        detail: {
-                            post_id: postId,
-                            completed_count: data.completed_count
-                        }
-                    }));
-                } else {
-                    if (debug) console.log('ℹ️ SNN Edu:', data.message, postId);
-                }
-                return data;
-            })
-            .catch(error => {
-                if (debug) console.error('❌ SNN Edu: Completion tracking failed', error);
-                return { success: false, error: error.message };
-            });
-        };
-
-        /**
-         * Get all completions for current user
-         */
-        window.snnEduGetCompletions = function(debug = false) {
-            return fetch(snnEduUserMeta.restUrl + 'completions', {
-                method: 'GET',
-                headers: {
-                    'X-WP-Nonce': snnEduUserMeta.nonce
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (debug) console.log('🎓 SNN Edu: User completions', data);
-                return data;
-            })
-            .catch(error => {
-                if (debug) console.error('❌ SNN Edu: Failed to get completions', error);
-                return { success: false, error: error.message };
-            });
-        };
-
-        /**
-         * Check if user has completed a specific post
-         */
-        window.snnEduIsCompleted = function(postId, debug = false) {
-            return window.snnEduGetCompletions(debug)
-                .then(data => {
-                    if (data.success && data.completions) {
-                        return data.completions.includes(parseInt(postId));
                     }
                     return false;
                 });
