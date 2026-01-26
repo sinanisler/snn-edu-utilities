@@ -1043,7 +1043,95 @@ function snn_edu_user_meta_get_enrollments($request) {
 }
 
 /**
+ * Check if all children of a parent post are completed
+ * Uses WordPress get_children() for efficiency
+ *
+ * @param int $parent_id The parent post ID
+ * @param int $user_id The user ID
+ * @return bool True if all children are completed, false otherwise
+ */
+function snn_edu_are_all_children_completed($parent_id, $user_id) {
+    // Get all published children of this parent using WordPress function
+    $children = get_children(array(
+        'post_parent' => $parent_id,
+        'post_type' => 'any',
+        'post_status' => 'publish',
+        'numberposts' => -1,
+    ));
+
+    // If no children, return false (can't be completed by children)
+    if (empty($children)) {
+        return false;
+    }
+
+    // Get user's completed posts
+    $completed_posts = snn_edu_get_completions_safe($user_id);
+
+    // Check if ALL children are in the completed list
+    foreach ($children as $child) {
+        if (!in_array($child->ID, $completed_posts)) {
+            return false; // Found a child that's not completed
+        }
+    }
+
+    // All children are completed!
+    return true;
+}
+
+/**
+ * Recursively mark parent and grandparents as completed if all their children are completed
+ * OPTIMIZATION: Once a parent is already marked complete, we skip checking its children
+ *
+ * @param int $post_id The post ID to check parents for
+ * @param int $user_id The user ID
+ * @return array Array of parent IDs that were marked as completed
+ */
+function snn_edu_auto_complete_parents($post_id, $user_id) {
+    $completed_parents = array();
+    $current_post = get_post($post_id);
+
+    // No parent to check
+    if (!$current_post || $current_post->post_parent == 0) {
+        return $completed_parents;
+    }
+
+    $parent_id = $current_post->post_parent;
+    $parent_post = get_post($parent_id);
+
+    // Parent doesn't exist
+    if (!$parent_post) {
+        return $completed_parents;
+    }
+
+    // Get current completions
+    $user_completions = snn_edu_get_completions_safe($user_id);
+
+    // OPTIMIZATION: If parent is already completed, skip checking children
+    if (in_array($parent_id, $user_completions)) {
+        return $completed_parents; // Already completed, no need to check
+    }
+
+    // Check if all children of this parent are completed
+    if (snn_edu_are_all_children_completed($parent_id, $user_id)) {
+        // All siblings are completed! Mark parent as complete
+        $result = snn_edu_add_completions_safe($user_id, array($parent_id));
+
+        if ($result['success'] && !empty($result['added'])) {
+            $completed_parents[] = $parent_id;
+
+            // Recursively check grandparents (move up the hierarchy)
+            $grandparent_completions = snn_edu_auto_complete_parents($parent_id, $user_id);
+            $completed_parents = array_merge($completed_parents, $grandparent_completions);
+        }
+    }
+
+    return $completed_parents;
+}
+
+/**
  * Mark a post as completed for current user
+ * SMART: Automatically marks parent/grandparents as complete if all siblings are done
+ * EDGE CASE HANDLING: Works even when lessons are completed in random order
  *
  * CRITICAL: Uses safe completion functions to prevent data loss
  */
@@ -1077,6 +1165,12 @@ function snn_edu_user_meta_complete_post($request) {
 
     if ($result['success']) {
         if (!empty($result['added'])) {
+            // Post was newly marked as completed
+
+            // SMART: Check if this completion triggers parent completions
+            // This handles random order completion - checks all siblings each time
+            $auto_completed_parents = snn_edu_auto_complete_parents($post_id_int, $user_id);
+
             return array(
                 'success' => true,
                 'message' => 'Successfully marked as completed',
@@ -1084,6 +1178,7 @@ function snn_edu_user_meta_complete_post($request) {
                 'completed_posts' => $result['added'],
                 'completed_count' => $result['total_count'],
                 'all_completions' => $result['all_completions'],
+                'auto_completed_parents' => $auto_completed_parents, // Parents that were auto-completed
             );
         } else {
             // Get current completions for response
