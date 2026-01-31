@@ -1158,6 +1158,7 @@ function snn_generate_certificate_hash( $post_id = null ) {
  * {user_page_course_enrollment_completion_list} - Returns formatted HTML list with course links and names
  * {user_page_course_enrollment_completion_list:bool} - Returns "true" if user has any completed course, "false" otherwise
  * {user_page_course_enrollment_completion_list:certificate_link} - Returns formatted HTML list with certificate links
+ * {user_page_course_enrollment_completion_list:bool_current_user} - Returns "true" if user from URL param (uid) has completed course from URL param (cid), "false" otherwise
  *
  */
 
@@ -1182,6 +1183,13 @@ function snn_add_user_page_completion_list_tag( $tags ) {
     $tags[] = [
         'name'  => '{user_page_course_enrollment_completion_list:certificate_link}',
         'label' => 'User Page Course Enrollment Completion List - Certificate Link',
+        'group' => 'SNN Edu',
+    ];
+
+    // Bool current user variant (checks if user from URL param has completed course from URL param)
+    $tags[] = [
+        'name'  => '{user_page_course_enrollment_completion_list:bool_current_user}',
+        'label' => 'User Page Course Enrollment Completion List - Boolean Current User',
         'group' => 'SNN Edu',
     ];
 
@@ -1244,6 +1252,63 @@ function snn_render_user_page_completion_list_tag( $content, $post, $context = '
 
 // Helper function to calculate user page completion list
 function snn_calculate_user_page_completion_list( $option = '' ) {
+    // Handle bool_current_user option - checks URL params for user ID and course ID
+    if ( $option === 'bool_current_user' ) {
+        // Get course ID from URL parameter
+        $course_id = isset( $_GET['cid'] ) ? (int) $_GET['cid'] : 0;
+        // Get user ID from URL parameter
+        $user_id = isset( $_GET['uid'] ) ? (int) $_GET['uid'] : 0;
+
+        if ( ! $course_id || ! $user_id ) {
+            return 'false';
+        }
+
+        // Get user's enrolled posts
+        $enrolled_posts_raw = get_user_meta( $user_id, 'snn_edu_enrolled_posts', true );
+
+        // Handle if it's stored as JSON string
+        if ( is_string( $enrolled_posts_raw ) ) {
+            $enrolled_posts = json_decode( $enrolled_posts_raw, true );
+            if ( json_last_error() !== JSON_ERROR_NONE ) {
+                $enrolled_posts = maybe_unserialize( $enrolled_posts_raw );
+            }
+        } else {
+            $enrolled_posts = $enrolled_posts_raw;
+        }
+
+        // Ensure it's an array
+        if ( ! is_array( $enrolled_posts ) || empty( $enrolled_posts ) ) {
+            return 'false';
+        }
+
+        // Convert all enrolled post IDs to integers
+        $enrolled_posts = array_map( 'intval', $enrolled_posts );
+        $enrolled_posts = array_filter( $enrolled_posts ); // Remove any 0 values
+
+        // Check if the course ID itself is in enrolled posts
+        if ( ! in_array( $course_id, $enrolled_posts, true ) ) {
+            return 'false';
+        }
+
+        // Get all children for this course
+        $all_children = snn_get_all_children_recursive( $course_id );
+
+        // If there are no children, the parent alone is enough
+        if ( empty( $all_children ) ) {
+            return 'true';
+        }
+
+        // Check if ALL children are in the enrolled posts list
+        foreach ( $all_children as $child_id ) {
+            if ( ! in_array( (int) $child_id, $enrolled_posts, true ) ) {
+                return 'false';
+            }
+        }
+
+        // All children are enrolled, course is complete
+        return 'true';
+    }
+
     // Get the author ID from the queried object (author page)
     $queried_object = get_queried_object();
 
