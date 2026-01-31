@@ -1472,3 +1472,178 @@ function snn_generate_certificate_hash_for_user( $post_id, $user_id ) {
 
     return $result;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * Custom Dynamic Data Tag: Course Completion Date
+ * Returns the completion date for the current post from the current user's completed posts meta
+ *
+ * Usage:
+ * {snn_edu_completed_date} - Returns formatted date (e.g., "01.Feb.2026")
+ *
+ */
+
+// Step 1: Register the tag in the builder
+add_filter( 'bricks/dynamic_tags_list', 'snn_add_completed_date_tag' );
+function snn_add_completed_date_tag( $tags ) {
+    $tags[] = [
+        'name'  => '{snn_edu_completed_date}',
+        'label' => 'Course Completion Date',
+        'group' => 'SNN Edu',
+    ];
+
+    return $tags;
+}
+
+// Step 2: Render the tag value (for individual tag parsing)
+add_filter( 'bricks/dynamic_data/render_tag', 'snn_get_completed_date_value', 20, 3 );
+function snn_get_completed_date_value( $tag, $post, $context = 'text' ) {
+    // Ensure $tag is a string
+    if ( ! is_string( $tag ) ) {
+        return $tag;
+    }
+
+    // Clean the tag (remove curly braces)
+    $clean_tag = str_replace( [ '{', '}' ], '', $tag );
+
+    // Only process our specific tag
+    if ( $clean_tag !== 'snn_edu_completed_date' ) {
+        return $tag;
+    }
+
+    // Get the correct post ID from context
+    $post_id = null;
+    if ( is_object( $post ) && isset( $post->ID ) ) {
+        $post_id = $post->ID;
+    } elseif ( is_numeric( $post ) && $post > 0 ) {
+        $post_id = (int) $post;
+    }
+
+    // Fallback: try get_queried_object_id() first, then get_the_ID()
+    if ( ! $post_id ) {
+        $post_id = get_queried_object_id();
+    }
+    if ( ! $post_id ) {
+        $post_id = get_the_ID();
+    }
+
+    // Get the completion date
+    $value = snn_get_post_completion_date( $post_id );
+
+    return $value;
+}
+
+// Step 3: Render in content (for content with multiple tags)
+add_filter( 'bricks/dynamic_data/render_content', 'snn_render_completed_date_tag', 20, 3 );
+add_filter( 'bricks/frontend/render_data', 'snn_render_completed_date_tag', 20, 3 );
+function snn_render_completed_date_tag( $content, $post, $context = 'text' ) {
+
+    // Only process if our tag exists in content
+    if ( strpos( $content, '{snn_edu_completed_date}' ) === false ) {
+        return $content;
+    }
+
+    // Get the correct post ID from context
+    $post_id = null;
+    if ( is_object( $post ) && isset( $post->ID ) ) {
+        $post_id = $post->ID;
+    } elseif ( is_numeric( $post ) && $post > 0 ) {
+        $post_id = (int) $post;
+    }
+
+    // Fallback: try get_queried_object_id() first, then get_the_ID()
+    if ( ! $post_id ) {
+        $post_id = get_queried_object_id();
+    }
+    if ( ! $post_id ) {
+        $post_id = get_the_ID();
+    }
+
+    // Get the completion date
+    $value = snn_get_post_completion_date( $post_id );
+
+    // Replace the tag with the value
+    $content = str_replace( '{snn_edu_completed_date}', $value, $content );
+
+    return $content;
+}
+
+// Helper function to get post completion date
+function snn_get_post_completion_date( $post_id = null ) {
+    // Get current post ID with multiple fallbacks
+    if ( ! $post_id ) {
+        $post_id = get_queried_object_id();
+    }
+    if ( ! $post_id ) {
+        $post_id = get_the_ID();
+    }
+
+    if ( ! $post_id ) {
+        return '';
+    }
+
+    // Get current user ID
+    $user_id = get_current_user_id();
+
+    if ( ! $user_id ) {
+        return '';
+    }
+
+    // Get user's completed posts
+    $completed_posts_raw = get_user_meta( $user_id, 'snn_edu_completed_posts', true );
+
+    // Handle if it's stored as JSON string
+    if ( is_string( $completed_posts_raw ) ) {
+        $completed_posts = json_decode( $completed_posts_raw, true );
+        if ( json_last_error() !== JSON_ERROR_NONE ) {
+            $completed_posts = maybe_unserialize( $completed_posts_raw );
+        }
+    } else {
+        $completed_posts = $completed_posts_raw;
+    }
+
+    // Ensure it's an array
+    if ( ! is_array( $completed_posts ) || empty( $completed_posts ) ) {
+        return '';
+    }
+
+    // Convert post_id to string for array key lookup
+    $post_id_str = (string) $post_id;
+
+    // Check if the current post ID exists in completed posts
+    if ( ! isset( $completed_posts[ $post_id_str ] ) ) {
+        return '';
+    }
+
+    // Get the completion date
+    $completion_datetime = $completed_posts[ $post_id_str ];
+
+    if ( empty( $completion_datetime ) ) {
+        return '';
+    }
+
+    // Parse the date (format: "2026-02-01 02:23:23")
+    $timestamp = strtotime( $completion_datetime );
+
+    if ( ! $timestamp ) {
+        return '';
+    }
+
+    // Format the date as "01.Feb.2026"
+    $formatted_date = date( 'd.M.Y', $timestamp );
+
+    return $formatted_date;
+}
