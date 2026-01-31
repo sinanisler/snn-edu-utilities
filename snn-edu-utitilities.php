@@ -505,11 +505,11 @@ function snn_edu_user_meta_tracking_callback() {
     echo '</ul></li>';
     echo '<li><strong>User Meta Fields:</strong>';
     echo '<ul style="list-style: circle; margin-left: 20px;">';
-    echo '<li><code>snn_edu_enrolled_posts</code> - Array of enrolled post IDs</li>';
-    echo '<li><code>snn_edu_completed_posts</code> - Associative array of post_id => completion_date</li>';
+    echo '<li><code>snn_edu_enrolled_posts</code> - Array of enrolled post IDs (includes all children and parents)</li>';
+    echo '<li><code>snn_edu_completed_posts</code> - Associative array of top_level_parent_id => completion_date (ONLY stores main course IDs, not child posts)</li>';
     echo '</ul></li>';
     echo '<li><strong>Shortcode:</strong> Use <code>[snn_video_tracker]</code> to auto-track page visits and enroll users when video events fire</li>';
-    echo '<li><strong>Automatic Completion Tracking:</strong> When <code>[snn_video_tracker]</code> shortcode runs (page loads), automatically marks the post as completed with current timestamp</li>';
+    echo '<li><strong>Automatic Completion Tracking:</strong> When <code>[snn_video_tracker]</code> shortcode runs (page loads), automatically marks the TOP-LEVEL parent course as completed (not child posts)</li>';
     echo '<li><strong>Shortcode Parameters:</strong> <code>events="both|started|completed"</code> (default: both), <code>post_id="123"</code> (optional), <code>debug="true|false"</code></li>';
     echo '<li><strong>JavaScript Events:</strong> Listens to <code>snn_video_started</code> and/or <code>snn_video_completed</code> custom events (both by default)</li>';
     echo '<li><strong>Post ID Detection:</strong> Automatically gets the correct post ID from video events, works with parent/child page hierarchies</li>';
@@ -1126,8 +1126,14 @@ function snn_edu_user_meta_complete_post($request) {
         );
     }
 
-    // Add completion
-    $result = snn_edu_add_completion_safe($user_id, absint($post_id));
+    // Get top-level parent (grand parent) - we only track completion for the main course
+    $top_parent_id = snn_edu_get_top_level_parent($post_id);
+    if (!$top_parent_id) {
+        $top_parent_id = $post_id; // Fallback if function fails
+    }
+
+    // Add completion for TOP-LEVEL parent only (not child posts)
+    $result = snn_edu_add_completion_safe($user_id, absint($top_parent_id));
 
     if ($result['success']) {
         return array(
@@ -1246,12 +1252,13 @@ function snn_edu_user_meta_render_meta_box($user) {
 
     // Display Completions Section
     echo '<div class="snn-edu-section" style="margin-top: 30px;">';
-    echo '<h3>Completions (Page Visits)</h3>';
+    echo '<h3>Completions (Top-Level Courses Only)</h3>';
+    echo '<p class="description" style="background: #fff3cd; padding: 10px; border-left: 4px solid #f59e0b; margin: 10px 0;">📌 <strong>Note:</strong> Only top-level parent courses are tracked here. When a user visits any child page, the main parent course is marked as complete.</p>';
 
     if (empty($completions)) {
         echo '<p><em>No completions yet.</em></p>';
     } else {
-        echo '<p><strong>Total Completions:</strong> ' . count($completions) . '</p>';
+        echo '<p><strong>Total Completed Courses:</strong> ' . count($completions) . '</p>';
         echo '<table class="widefat striped">';
         echo '<thead>';
         echo '<tr>';
@@ -1602,24 +1609,30 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
     $is_enrolled = in_array($post_id, $current_enrollments);
 
     // Track completion automatically when shortcode loads
+    // BUT only track the TOP-LEVEL parent (grand parent), not child posts
     $current_post_obj = get_post($post_id);
     if ($current_post_obj && snn_edu_is_post_type_allowed($current_post_obj->post_type)) {
-        snn_edu_add_completion_safe($user_id, $post_id);
+        $top_parent_id = snn_edu_get_top_level_parent($post_id);
+        if (!$top_parent_id) {
+            $top_parent_id = $post_id; // Fallback if function fails
+        }
+        snn_edu_add_completion_safe($user_id, $top_parent_id);
     }
-
-    // Get completion data for debug display
-    $completions = snn_edu_get_completions_safe($user_id);
-    $is_completed = isset($completions[$post_id]);
-    $completion_date = $is_completed ? $completions[$post_id] : null;
 
     // Get parent post info for debug display
     $current_post = get_post($post_id);
     $parent_id = $current_post ? $current_post->post_parent : 0;
     $all_ancestors = ($parent_id > 0) ? snn_edu_get_all_ancestors($post_id) : array();
     $immediate_parent_id = !empty($all_ancestors) ? $all_ancestors[0] : 0;
-    $top_parent_id = !empty($all_ancestors) ? end($all_ancestors) : 0;
+    $top_parent_id_display = !empty($all_ancestors) ? end($all_ancestors) : $post_id;
     $is_immediate_parent_enrolled = ($immediate_parent_id > 0) ? in_array($immediate_parent_id, $current_enrollments) : false;
-    $is_top_parent_enrolled = ($top_parent_id > 0) ? in_array($top_parent_id, $current_enrollments) : false;
+    $is_top_parent_enrolled = ($top_parent_id_display > 0 && $top_parent_id_display !== $post_id) ? in_array($top_parent_id_display, $current_enrollments) : false;
+
+    // Get completion data for debug display
+    // Check completion for TOP-LEVEL parent (since we only track completion for main course)
+    $completions = snn_edu_get_completions_safe($user_id);
+    $is_completed = isset($completions[$top_parent_id_display]);
+    $completion_date = $is_completed ? $completions[$top_parent_id_display] : null;
 
     // Get post type info for debug display
     $post_type = $current_post ? $current_post->post_type : 'unknown';
@@ -1654,13 +1667,15 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
                     <li>Total Enrollments: <code><?php echo count($current_enrollments); ?></code></li>
                 </ul>
 
-                <strong>Completion Tracking:</strong>
+                <strong>Completion Tracking (Top-Level Parent Only):</strong>
                 <ul>
-                    <li><strong>📍 Page Visited (Completed):</strong> <code style="color: <?php echo $is_completed ? '#10b981' : '#ef4444'; ?>;"><?php echo $is_completed ? 'YES ✅' : 'NO ❌'; ?></code></li>
+                    <li><strong>💡 Note:</strong> <code>Completion tracking only stores TOP-LEVEL parent IDs, not child posts</code></li>
+                    <li><strong>📂 Checking Completion For:</strong> <code>Post ID <?php echo $top_parent_id_display; ?></code> <?php echo ($top_parent_id_display !== $post_id) ? '(Top-Level Parent)' : '(This Post - Top Level)'; ?></li>
+                    <li><strong>📍 Main Course Completed:</strong> <code style="color: <?php echo $is_completed ? '#10b981' : '#ef4444'; ?>;"><?php echo $is_completed ? 'YES ✅' : 'NO ❌'; ?></code></li>
                     <?php if ($is_completed && $completion_date): ?>
                     <li><strong>Completion Date:</strong> <code><?php echo esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($completion_date))); ?></code></li>
                     <?php endif; ?>
-                    <li><strong>Total Completions:</strong> <code><?php echo count($completions); ?></code></li>
+                    <li><strong>Total Completions (All Courses):</strong> <code><?php echo count($completions); ?></code></li>
                 </ul>
 
                 <strong>Post Type Information:</strong>
@@ -1684,9 +1699,10 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
                     <li><strong>👉 Level_1 (Immediate Parent ID):</strong> <code><?php echo $immediate_parent_id; ?></code></li>
                     <li><strong>Level_1 Enrolled:</strong> <code style="color: <?php echo $is_immediate_parent_enrolled ? '#10b981' : '#ef4444'; ?>;"><?php echo $is_immediate_parent_enrolled ? 'YES ✅' : 'NO ❌'; ?></code></li>
                     <?php endif; ?>
-                    <?php if ($top_parent_id > 0): ?>
-                    <li><strong>📂 Level_0 (Top-Level Parent ID):</strong> <code><?php echo $top_parent_id; ?></code></li>
+                    <?php if ($top_parent_id_display > 0 && $top_parent_id_display !== $post_id): ?>
+                    <li><strong>📂 Level_0 (Top-Level Parent ID):</strong> <code><?php echo $top_parent_id_display; ?></code></li>
                     <li><strong>Level_0 Enrolled:</strong> <code style="color: <?php echo $is_top_parent_enrolled ? '#10b981' : '#ef4444'; ?>;"><?php echo $is_top_parent_enrolled ? 'YES ✅' : 'NO ❌'; ?></code></li>
+                    <li><strong>Level_0 Completed:</strong> <code style="color: <?php echo $is_completed ? '#10b981' : '#ef4444'; ?>;"><?php echo $is_completed ? 'YES ✅' : 'NO ❌'; ?></code></li>
                     <?php endif; ?>
                 </ul>
                 <?php else: ?>
