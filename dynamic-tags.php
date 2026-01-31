@@ -1134,3 +1134,173 @@ function snn_generate_certificate_hash( $post_id = null ) {
 
     return $result;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * Custom Dynamic Data Tag: User Page Course Enrollment Completion List
+ * Returns a list of completed courses for the author being viewed on author pages
+ * A course is considered "completed" if the parent AND all its children are in the enrolled posts list
+ *
+ * Usage:
+ * {user_page_course_enrollment_completion_list} - Returns comma-separated list of completed course IDs
+ *
+ */
+
+// Step 1: Register the tag in the builder
+add_filter( 'bricks/dynamic_tags_list', 'snn_add_user_page_completion_list_tag' );
+function snn_add_user_page_completion_list_tag( $tags ) {
+    $tags[] = [
+        'name'  => '{user_page_course_enrollment_completion_list}',
+        'label' => 'User Page Course Enrollment Completion List',
+        'group' => 'SNN Edu',
+    ];
+
+    return $tags;
+}
+
+// Step 2: Render the tag value (for individual tag parsing)
+add_filter( 'bricks/dynamic_data/render_tag', 'snn_get_user_page_completion_list_value', 20, 3 );
+function snn_get_user_page_completion_list_value( $tag, $post, $context = 'text' ) {
+    // Ensure $tag is a string
+    if ( ! is_string( $tag ) ) {
+        return $tag;
+    }
+
+    // Clean the tag (remove curly braces)
+    $clean_tag = str_replace( [ '{', '}' ], '', $tag );
+
+    // Only process our specific tag
+    if ( $clean_tag !== 'user_page_course_enrollment_completion_list' ) {
+        return $tag;
+    }
+
+    // Get the completion list
+    $value = snn_calculate_user_page_completion_list();
+
+    return $value;
+}
+
+// Step 3: Render in content (for content with multiple tags)
+add_filter( 'bricks/dynamic_data/render_content', 'snn_render_user_page_completion_list_tag', 20, 3 );
+add_filter( 'bricks/frontend/render_data', 'snn_render_user_page_completion_list_tag', 20, 3 );
+function snn_render_user_page_completion_list_tag( $content, $post, $context = 'text' ) {
+
+    // Only process if our tag exists in content
+    if ( strpos( $content, '{user_page_course_enrollment_completion_list}' ) === false ) {
+        return $content;
+    }
+
+    // Calculate the completion list
+    $value = snn_calculate_user_page_completion_list();
+
+    // Replace the tag with the value
+    $content = str_replace( '{user_page_course_enrollment_completion_list}', $value, $content );
+
+    return $content;
+}
+
+// Helper function to calculate user page completion list
+function snn_calculate_user_page_completion_list() {
+    // Get the author ID from the queried object (author page)
+    $queried_object = get_queried_object();
+    
+    // Check if we're on an author page
+    if ( ! $queried_object || ! isset( $queried_object->ID ) || ! is_a( $queried_object, 'WP_User' ) ) {
+        return '';
+    }
+
+    $author_id = $queried_object->ID;
+
+    if ( ! $author_id ) {
+        return '';
+    }
+
+    // Get author's enrolled posts
+    $enrolled_posts_raw = get_user_meta( $author_id, 'snn_edu_enrolled_posts', true );
+
+    // Handle if it's stored as JSON string
+    if ( is_string( $enrolled_posts_raw ) ) {
+        $enrolled_posts = json_decode( $enrolled_posts_raw, true );
+        if ( json_last_error() !== JSON_ERROR_NONE ) {
+            $enrolled_posts = maybe_unserialize( $enrolled_posts_raw );
+        }
+    } else {
+        $enrolled_posts = $enrolled_posts_raw;
+    }
+
+    // Ensure it's an array
+    if ( ! is_array( $enrolled_posts ) || empty( $enrolled_posts ) ) {
+        return '';
+    }
+
+    // Convert all enrolled post IDs to integers
+    $enrolled_posts = array_map( 'intval', $enrolled_posts );
+    $enrolled_posts = array_filter( $enrolled_posts ); // Remove any 0 values
+
+    // Get only parent posts from the enrolled list (posts with no parent)
+    $parent_posts = [];
+    foreach ( $enrolled_posts as $post_id ) {
+        $post = get_post( $post_id );
+        
+        if ( ! $post ) {
+            continue;
+        }
+
+        // Check if this is a parent post (post_parent = 0)
+        if ( $post->post_parent == 0 ) {
+            $parent_posts[] = $post_id;
+        }
+    }
+
+    if ( empty( $parent_posts ) ) {
+        return '';
+    }
+
+    // Check which parent posts have 100% completion
+    $completed_parents = [];
+
+    foreach ( $parent_posts as $parent_id ) {
+        // Get all children for this parent
+        $all_children = snn_get_all_children_recursive( $parent_id );
+
+        // If there are no children, the parent alone is considered complete
+        if ( empty( $all_children ) ) {
+            $completed_parents[] = $parent_id;
+            continue;
+        }
+
+        // Check if ALL children are in the enrolled posts list
+        $all_children_enrolled = true;
+        foreach ( $all_children as $child_id ) {
+            if ( ! in_array( (int) $child_id, $enrolled_posts, true ) ) {
+                $all_children_enrolled = false;
+                break;
+            }
+        }
+
+        // If all children are enrolled, this parent is complete
+        if ( $all_children_enrolled ) {
+            $completed_parents[] = $parent_id;
+        }
+    }
+
+    // Return comma-separated list of completed parent IDs
+    if ( empty( $completed_parents ) ) {
+        return '';
+    }
+
+    return implode( ', ', $completed_parents );
+}
