@@ -1155,8 +1155,9 @@ function snn_generate_certificate_hash( $post_id = null ) {
  * A course is considered "completed" if the parent AND all its children are in the enrolled posts list
  *
  * Usage:
- * {user_page_course_enrollment_completion_list} - Returns comma-separated list of completed course IDs
+ * {user_page_course_enrollment_completion_list} - Returns formatted HTML list with course links and names
  * {user_page_course_enrollment_completion_list:bool} - Returns "true" if user has any completed course, "false" otherwise
+ * {user_page_course_enrollment_completion_list:certificate_link} - Returns formatted HTML list with certificate links
  *
  */
 
@@ -1174,6 +1175,13 @@ function snn_add_user_page_completion_list_tag( $tags ) {
     $tags[] = [
         'name'  => '{user_page_course_enrollment_completion_list:bool}',
         'label' => 'User Page Course Enrollment Completion List - Boolean',
+        'group' => 'SNN Edu',
+    ];
+
+    // Certificate link variant
+    $tags[] = [
+        'name'  => '{user_page_course_enrollment_completion_list:certificate_link}',
+        'label' => 'User Page Course Enrollment Completion List - Certificate Link',
         'group' => 'SNN Edu',
     ];
 
@@ -1238,7 +1246,7 @@ function snn_render_user_page_completion_list_tag( $content, $post, $context = '
 function snn_calculate_user_page_completion_list( $option = '' ) {
     // Get the author ID from the queried object (author page)
     $queried_object = get_queried_object();
-    
+
     // Check if we're on an author page
     if ( ! $queried_object || ! isset( $queried_object->ID ) || ! is_a( $queried_object, 'WP_User' ) ) {
         return $option === 'bool' ? 'false' : '';
@@ -1276,7 +1284,7 @@ function snn_calculate_user_page_completion_list( $option = '' ) {
     $parent_posts = [];
     foreach ( $enrolled_posts as $post_id ) {
         $post = get_post( $post_id );
-        
+
         if ( ! $post ) {
             continue;
         }
@@ -1340,10 +1348,18 @@ function snn_calculate_user_page_completion_list( $option = '' ) {
         }
 
         $course_title = esc_html( $parent_post->post_title );
-        $course_url = esc_url( get_permalink( $parent_id ) );
+
+        // Determine URL based on option
+        if ( $option === 'certificate_link' ) {
+            // Generate certificate hash for this course and author
+            $certificate_hash = snn_generate_certificate_hash_for_user( $parent_id, $author_id );
+            $course_url = esc_url( home_url( '/instructor/' . $author_id . '/?cid=' . $parent_id . '&certificate_id=' . $certificate_hash ) );
+        } else {
+            $course_url = esc_url( get_permalink( $parent_id ) );
+        }
 
         $output .= '<li>';
-        $output .= '<a class="brxe-button bricks-button bricks-background-primary" href="' . $course_url . '">';
+        $output .= '<a class="brxe-button bricks-button bricks-background-primary" href="' . $course_url . '" data-balloon="Get Your Certificate">';
         $output .= '<i class="ti-bookmark-alt"></i>' . $course_title;
         $output .= '</a>';
         $output .= '</li>';
@@ -1352,4 +1368,42 @@ function snn_calculate_user_page_completion_list( $option = '' ) {
     $output .= '</ul>';
 
     return $output;
+}
+
+// Helper function to generate certificate hash for a specific user
+function snn_generate_certificate_hash_for_user( $post_id, $user_id ) {
+    if ( ! $post_id || ! $user_id ) {
+        return '';
+    }
+
+    // Combine inputs into one string with salt to prevent brute force
+    $input = $user_id . ':' . $post_id . ':' . 'NkxUX5qW8QVycLc3wdotwIxiZymyCmydKAgKEeaZtQfSErqE8Qikuh';
+
+    // Define available characters (letters and numbers only)
+    $chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+    $chars_length = strlen( $chars );
+
+    // Step 1: Create a numeric seed from the input string using DJB2 algorithm logic
+    $numeric_seed = 0;
+    $input_length = strlen( $input );
+
+    for ( $i = 0; $i < $input_length; $i++ ) {
+        // Bitwise operations to create a unique number based on characters
+        $numeric_seed = ( ( $numeric_seed << 5 ) - $numeric_seed ) + ord( $input[ $i ] );
+        // Keep it as a 32-bit integer
+        $numeric_seed = $numeric_seed & 0xFFFFFFFF;
+    }
+
+    // Step 2: Generate 32 characters using a Linear Congruential Generator (LCG)
+    $result = '';
+    $current_seed = abs( $numeric_seed );
+
+    for ( $i = 0; $i < 32; $i++ ) {
+        // Standard LCG constants to scramble the number further each step
+        $current_seed = ( $current_seed * 1664525 + 1013904223 ) % 4294967296;
+        // Pick a character based on the current state of the seed
+        $result .= $chars[ $current_seed % $chars_length ];
+    }
+
+    return $result;
 }
