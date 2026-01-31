@@ -496,16 +496,25 @@ function snn_edu_user_meta_tracking_callback() {
     $options = get_option('snn_edu_settings', array());
     $checked = isset($options['enable_user_meta_tracking']) && $options['enable_user_meta_tracking'] ? 'checked' : '';
     echo '<input type="checkbox" name="snn_edu_settings[enable_user_meta_tracking]" value="1" ' . $checked . '>';
-    echo '<p class="description">Enables video enrollment tracking system that saves user progress to custom fields:</p>';
+    echo '<p class="description">Enables video enrollment and completion tracking system that saves user progress to custom fields:</p>';
     echo '<ul style="list-style: disc; margin-left: 20px;">';
-    echo '<li><strong>REST API Endpoints:</strong> <code>/wp-json/snn-edu/v1/enroll</code>, <code>/wp-json/snn-edu/v1/unenroll</code>, <code>/wp-json/snn-edu/v1/enrollments</code></li>';
-    echo '<li><strong>User Meta Field:</strong> Stores enrolled post IDs in <code>snn_edu_enrolled_posts</code> as an array</li>';
-    echo '<li><strong>Shortcode:</strong> Use <code>[snn_video_tracker]</code> to auto-enroll users when video events fire</li>';
+    echo '<li><strong>REST API Endpoints:</strong>';
+    echo '<ul style="list-style: circle; margin-left: 20px;">';
+    echo '<li>Enrollments: <code>/wp-json/snn-edu/v1/enroll</code>, <code>/wp-json/snn-edu/v1/unenroll</code>, <code>/wp-json/snn-edu/v1/enrollments</code></li>';
+    echo '<li>Completions: <code>/wp-json/snn-edu/v1/complete</code>, <code>/wp-json/snn-edu/v1/completions</code></li>';
+    echo '</ul></li>';
+    echo '<li><strong>User Meta Fields:</strong>';
+    echo '<ul style="list-style: circle; margin-left: 20px;">';
+    echo '<li><code>snn_edu_enrolled_posts</code> - Array of enrolled post IDs</li>';
+    echo '<li><code>snn_edu_completed_posts</code> - Associative array of post_id => completion_date</li>';
+    echo '</ul></li>';
+    echo '<li><strong>Shortcode:</strong> Use <code>[snn_video_tracker]</code> to auto-track page visits and enroll users when video events fire</li>';
+    echo '<li><strong>Automatic Completion Tracking:</strong> When <code>[snn_video_tracker]</code> shortcode runs (page loads), automatically marks the post as completed with current timestamp</li>';
     echo '<li><strong>Shortcode Parameters:</strong> <code>events="both|started|completed"</code> (default: both), <code>post_id="123"</code> (optional), <code>debug="true|false"</code></li>';
     echo '<li><strong>JavaScript Events:</strong> Listens to <code>snn_video_started</code> and/or <code>snn_video_completed</code> custom events (both by default)</li>';
     echo '<li><strong>Post ID Detection:</strong> Automatically gets the correct post ID from video events, works with parent/child page hierarchies</li>';
     echo '<li><strong>Parent Enrollment:</strong> When enrolling in a child post, automatically enrolls in ALL ancestor parents (immediate parent, grandparent, etc. up to top-level)</li>';
-    echo '<li><strong>Admin Meta Box:</strong> View enrolled courses in user profile edit page</li>';
+    echo '<li><strong>Admin Meta Box:</strong> View enrolled courses and completion dates in user profile edit page</li>';
     echo '<li><strong>Security:</strong> Only works for logged-in users, sanitizes all post IDs (integers only)</li>';
     echo '</ul>';
     echo '<p class="description"><strong>JavaScript Usage Example:</strong></p>';
@@ -520,11 +529,16 @@ document.addEventListener(\'snn_video_completed\', function(event) {
     });
 });
 
-// Or manually enroll/unenroll
+// Enrollment functions
 snnEduEnrollUser(123);      // Enroll in post 123
 snnEduUnenrollUser(123);    // Unenroll from post 123
 snnEduGetEnrollments();     // Get all enrollments
 snnEduIsEnrolled(123);      // Check if enrolled
+
+// Completion tracking functions
+snnEduCompletePost(123);    // Mark post as completed
+snnEduGetCompletions();     // Get all completions (returns {post_id: date, ...})
+snnEduIsCompleted(123);     // Check if post is completed
 </pre>';
 }
 
@@ -661,6 +675,68 @@ function snn_edu_get_enrollments_safe($user_id) {
 }
 
 /**
+ * Get user completions safely
+ * Returns associative array with post_id => completion_date
+ *
+ * @param int $user_id The user ID
+ * @return array Associative array (post_id => date) or empty array
+ */
+function snn_edu_get_completions_safe($user_id) {
+    $completions = get_user_meta($user_id, 'snn_edu_completed_posts', true);
+
+    if (is_array($completions)) {
+        // Ensure all keys are integers and values are strings
+        $sanitized = array();
+        foreach ($completions as $post_id => $date) {
+            $sanitized[intval($post_id)] = sanitize_text_field($date);
+        }
+        return $sanitized;
+    }
+
+    return array();
+}
+
+/**
+ * Add completion for a post (or update if already exists)
+ * Stores post_id => current timestamp
+ *
+ * @param int $user_id The user ID
+ * @param int $post_id The post ID to mark as complete
+ * @return array Result with success status
+ */
+function snn_edu_add_completion_safe($user_id, $post_id) {
+    $post_id = absint($post_id);
+
+    if ($post_id <= 0) {
+        return array('success' => false, 'error' => 'Invalid post ID');
+    }
+
+    // Get current completions
+    $completions = snn_edu_get_completions_safe($user_id);
+
+    // Check if already completed
+    $already_completed = isset($completions[$post_id]);
+    $original_date = $already_completed ? $completions[$post_id] : null;
+
+    // Add or update completion with current timestamp
+    $current_time = current_time('mysql');
+    $completions[$post_id] = $current_time;
+
+    // Update user meta
+    update_user_meta($user_id, 'snn_edu_completed_posts', $completions);
+
+    return array(
+        'success' => true,
+        'post_id' => $post_id,
+        'already_completed' => $already_completed,
+        'original_date' => $original_date,
+        'completion_date' => $current_time,
+        'total_count' => count($completions),
+        'all_completions' => $completions
+    );
+}
+
+/**
  * Safe enrollment - ONLY ADDS, never removes
  * Simple and bulletproof: merge new IDs with existing, duplicates handled by array_unique
  * Even with race conditions, data can never be lost
@@ -774,6 +850,28 @@ function snn_edu_user_meta_register_routes() {
     register_rest_route('snn-edu/v1', '/enrollments', array(
         'methods' => 'GET',
         'callback' => 'snn_edu_user_meta_get_enrollments',
+        'permission_callback' => 'snn_edu_user_meta_check_permission',
+    ));
+
+    // Completion endpoints
+    register_rest_route('snn-edu/v1', '/complete', array(
+        'methods' => 'POST',
+        'callback' => 'snn_edu_user_meta_complete_post',
+        'permission_callback' => 'snn_edu_user_meta_check_permission',
+        'args' => array(
+            'post_id' => array(
+                'required' => true,
+                'validate_callback' => function($param) {
+                    return is_numeric($param) && intval($param) > 0;
+                },
+                'sanitize_callback' => 'absint',
+            ),
+        ),
+    ));
+
+    register_rest_route('snn-edu/v1', '/completions', array(
+        'methods' => 'GET',
+        'callback' => 'snn_edu_user_meta_get_completions',
         'permission_callback' => 'snn_edu_user_meta_check_permission',
     ));
 }
@@ -956,6 +1054,71 @@ function snn_edu_user_meta_get_enrollments($request) {
 }
 
 /**
+ * Mark a post as completed for the current user
+ * Stores post_id => completion_date
+ */
+function snn_edu_user_meta_complete_post($request) {
+    $post_id = $request->get_param('post_id');
+    $user_id = get_current_user_id();
+
+    // Verify post exists
+    $post = get_post($post_id);
+    if (!$post) {
+        return new WP_Error(
+            'invalid_post',
+            'Post does not exist',
+            array('status' => 404)
+        );
+    }
+
+    // Check if post type is allowed
+    if (!snn_edu_is_post_type_allowed($post->post_type)) {
+        return new WP_Error(
+            'post_type_not_allowed',
+            'This post type is not allowed for completion tracking.',
+            array('status' => 403)
+        );
+    }
+
+    // Add completion
+    $result = snn_edu_add_completion_safe($user_id, absint($post_id));
+
+    if ($result['success']) {
+        return array(
+            'success' => true,
+            'message' => $result['already_completed'] ? 'Completion updated' : 'Successfully completed',
+            'post_id' => $result['post_id'],
+            'completion_date' => $result['completion_date'],
+            'already_completed' => $result['already_completed'],
+            'original_date' => $result['original_date'],
+            'total_count' => $result['total_count'],
+        );
+    }
+
+    return new WP_Error(
+        'completion_failed',
+        isset($result['error']) ? $result['error'] : 'Completion tracking failed',
+        array('status' => 500)
+    );
+}
+
+/**
+ * Get all completions for current user
+ */
+function snn_edu_user_meta_get_completions($request) {
+    $user_id = get_current_user_id();
+
+    // Use the SAFE completion retrieval function
+    $completions = snn_edu_get_completions_safe($user_id);
+
+    return array(
+        'success' => true,
+        'completions' => $completions,
+        'count' => count($completions),
+    );
+}
+
+/**
  * Add custom meta box to user edit screen
  */
 function snn_edu_user_meta_add_meta_box() {
@@ -965,7 +1128,7 @@ function snn_edu_user_meta_add_meta_box() {
 
     add_meta_box(
         'snn_edu_user_enrollments',
-        'Course Enrollments',
+        'Course Enrollments & Completions',
         'snn_edu_user_meta_render_meta_box',
         'user-edit',
         'normal',
@@ -979,65 +1142,133 @@ add_action('load-profile.php', 'snn_edu_user_meta_add_meta_box');
  * Render the meta box content
  */
 function snn_edu_user_meta_render_meta_box($user) {
-    // Use safe retrieval method
+    // Use safe retrieval methods
     $enrollments = snn_edu_get_enrollments_safe($user->ID);
+    $completions = snn_edu_get_completions_safe($user->ID);
+
+    echo '<div class="snn-edu-user-meta-box">';
+
+    // Display Enrollments Section
+    echo '<div class="snn-edu-section">';
+    echo '<h3>Enrollments</h3>';
 
     if (empty($enrollments)) {
-        echo '<p>No enrollments yet.</p>';
-        return;
-    }
+        echo '<p><em>No enrollments yet.</em></p>';
+    } else {
+        echo '<p><strong>Total Enrollments:</strong> ' . count($enrollments) . '</p>';
+        echo '<table class="widefat striped">';
+        echo '<thead>';
+        echo '<tr>';
+        echo '<th>Post ID</th>';
+        echo '<th>Post Title</th>';
+        echo '<th>Post Type</th>';
+        echo '<th>Status</th>';
+        echo '<th>Actions</th>';
+        echo '</tr>';
+        echo '</thead>';
+        echo '<tbody>';
 
-    echo '<div class="snn-edu-enrollments">';
-    echo '<p><strong>Total Enrollments:</strong> ' . count($enrollments) . '</p>';
-    echo '<table class="widefat striped">';
-    echo '<thead>';
-    echo '<tr>';
-    echo '<th>Post ID</th>';
-    echo '<th>Post Title</th>';
-    echo '<th>Post Type</th>';
-    echo '<th>Status</th>';
-    echo '<th>Actions</th>';
-    echo '</tr>';
-    echo '</thead>';
-    echo '<tbody>';
+        foreach ($enrollments as $post_id) {
+            $post = get_post($post_id);
 
-    foreach ($enrollments as $post_id) {
-        $post = get_post($post_id);
+            if ($post) {
+                $edit_link = get_edit_post_link($post_id);
+                $view_link = get_permalink($post_id);
 
-        if ($post) {
-            $edit_link = get_edit_post_link($post_id);
-            $view_link = get_permalink($post_id);
-
-            echo '<tr>';
-            echo '<td>' . intval($post_id) . '</td>';
-            echo '<td><a href="' . esc_url($edit_link) . '" target="_blank">' . esc_html($post->post_title) . '</a></td>';
-            echo '<td>' . esc_html($post->post_type) . '</td>';
-            echo '<td>' . esc_html($post->post_status) . '</td>';
-            echo '<td>';
-            echo '<a href="' . esc_url($view_link) . '" target="_blank" class="button button-small">View</a> ';
-            echo '<a href="' . esc_url($edit_link) . '" target="_blank" class="button button-small">Edit</a>';
-            echo '</td>';
-            echo '</tr>';
-        } else {
-            echo '<tr>';
-            echo '<td>' . intval($post_id) . '</td>';
-            echo '<td colspan="4"><em>Post not found (may be deleted)</em></td>';
-            echo '</tr>';
+                echo '<tr>';
+                echo '<td>' . intval($post_id) . '</td>';
+                echo '<td><a href="' . esc_url($edit_link) . '" target="_blank">' . esc_html($post->post_title) . '</a></td>';
+                echo '<td>' . esc_html($post->post_type) . '</td>';
+                echo '<td>' . esc_html($post->post_status) . '</td>';
+                echo '<td>';
+                echo '<a href="' . esc_url($view_link) . '" target="_blank" class="button button-small">View</a> ';
+                echo '<a href="' . esc_url($edit_link) . '" target="_blank" class="button button-small">Edit</a>';
+                echo '</td>';
+                echo '</tr>';
+            } else {
+                echo '<tr>';
+                echo '<td>' . intval($post_id) . '</td>';
+                echo '<td colspan="4"><em>Post not found (may be deleted)</em></td>';
+                echo '</tr>';
+            }
         }
-    }
 
-    echo '</tbody>';
-    echo '</table>';
+        echo '</tbody>';
+        echo '</table>';
+    }
+    echo '</div>';
+
+    // Display Completions Section
+    echo '<div class="snn-edu-section" style="margin-top: 30px;">';
+    echo '<h3>Completions (Page Visits)</h3>';
+
+    if (empty($completions)) {
+        echo '<p><em>No completions yet.</em></p>';
+    } else {
+        echo '<p><strong>Total Completions:</strong> ' . count($completions) . '</p>';
+        echo '<table class="widefat striped">';
+        echo '<thead>';
+        echo '<tr>';
+        echo '<th>Post ID</th>';
+        echo '<th>Post Title</th>';
+        echo '<th>Post Type</th>';
+        echo '<th>Completion Date</th>';
+        echo '<th>Actions</th>';
+        echo '</tr>';
+        echo '</thead>';
+        echo '<tbody>';
+
+        // Sort by completion date (newest first)
+        arsort($completions);
+
+        foreach ($completions as $post_id => $completion_date) {
+            $post = get_post($post_id);
+
+            if ($post) {
+                $edit_link = get_edit_post_link($post_id);
+                $view_link = get_permalink($post_id);
+                $formatted_date = date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($completion_date));
+
+                echo '<tr>';
+                echo '<td>' . intval($post_id) . '</td>';
+                echo '<td><a href="' . esc_url($edit_link) . '" target="_blank">' . esc_html($post->post_title) . '</a></td>';
+                echo '<td>' . esc_html($post->post_type) . '</td>';
+                echo '<td>' . esc_html($formatted_date) . '</td>';
+                echo '<td>';
+                echo '<a href="' . esc_url($view_link) . '" target="_blank" class="button button-small">View</a> ';
+                echo '<a href="' . esc_url($edit_link) . '" target="_blank" class="button button-small">Edit</a>';
+                echo '</td>';
+                echo '</tr>';
+            } else {
+                echo '<tr>';
+                echo '<td>' . intval($post_id) . '</td>';
+                echo '<td colspan="3"><em>Post not found (may be deleted)</em></td>';
+                echo '<td>' . esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($completion_date))) . '</td>';
+                echo '</tr>';
+            }
+        }
+
+        echo '</tbody>';
+        echo '</table>';
+    }
+    echo '</div>';
+
     echo '</div>';
 
     echo '<style>
-        .snn-edu-enrollments {
+        .snn-edu-user-meta-box {
             margin: 15px 0;
         }
-        .snn-edu-enrollments table {
+        .snn-edu-section h3 {
+            margin: 10px 0;
+            padding: 8px 0;
+            border-bottom: 2px solid #2271b1;
+            color: #2271b1;
+        }
+        .snn-edu-section table {
             margin-top: 10px;
         }
-        .snn-edu-enrollments th {
+        .snn-edu-section th {
             font-weight: 600;
         }
     </style>';
@@ -1198,6 +1429,85 @@ function snn_edu_user_meta_inline_script() {
                 });
         };
 
+        /**
+         * Mark a post as completed via REST API
+         */
+        window.snnEduCompletePost = function(postId, debug = false) {
+            if (!postId || !Number.isInteger(parseInt(postId))) {
+                if (debug) console.error('SNN Edu: Invalid post ID', postId);
+                return Promise.reject('Invalid post ID');
+            }
+
+            const completionData = {
+                post_id: parseInt(postId)
+            };
+
+            return fetch(snnEduUserMeta.restUrl + 'complete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-WP-Nonce': snnEduUserMeta.nonce
+                },
+                body: JSON.stringify(completionData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (debug) console.log('✅ SNN Edu: Post marked as completed', postId);
+
+                    // Dispatch custom event for other scripts to listen
+                    document.dispatchEvent(new CustomEvent('snn_edu_completed', {
+                        detail: {
+                            post_id: postId,
+                            completion_date: data.completion_date,
+                            total_count: data.total_count
+                        }
+                    }));
+                } else {
+                    if (debug) console.log('ℹ️ SNN Edu:', data.message, postId);
+                }
+                return data;
+            })
+            .catch(error => {
+                if (debug) console.error('❌ SNN Edu: Completion tracking failed', error);
+                return { success: false, error: error.message };
+            });
+        };
+
+        /**
+         * Get all completions for current user
+         */
+        window.snnEduGetCompletions = function(debug = false) {
+            return fetch(snnEduUserMeta.restUrl + 'completions', {
+                method: 'GET',
+                headers: {
+                    'X-WP-Nonce': snnEduUserMeta.nonce
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (debug) console.log('📚 SNN Edu: User completions', data);
+                return data;
+            })
+            .catch(error => {
+                if (debug) console.error('❌ SNN Edu: Failed to get completions', error);
+                return { success: false, error: error.message };
+            });
+        };
+
+        /**
+         * Check if user has completed a specific post
+         */
+        window.snnEduIsCompleted = function(postId, debug = false) {
+            return window.snnEduGetCompletions(debug)
+                .then(data => {
+                    if (data.success && data.completions) {
+                        return postId in data.completions;
+                    }
+                    return false;
+                });
+        };
+
     })();
     </script>
     <?php
@@ -1245,6 +1555,17 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
     $current_enrollments = snn_edu_get_enrollments_safe($user_id);
     $is_enrolled = in_array($post_id, $current_enrollments);
 
+    // Track completion automatically when shortcode loads
+    $current_post_obj = get_post($post_id);
+    if ($current_post_obj && snn_edu_is_post_type_allowed($current_post_obj->post_type)) {
+        snn_edu_add_completion_safe($user_id, $post_id);
+    }
+
+    // Get completion data for debug display
+    $completions = snn_edu_get_completions_safe($user_id);
+    $is_completed = isset($completions[$post_id]);
+    $completion_date = $is_completed ? $completions[$post_id] : null;
+
     // Get parent post info for debug display
     $current_post = get_post($post_id);
     $parent_id = $current_post ? $current_post->post_parent : 0;
@@ -1285,6 +1606,15 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
                     <li>Auto-enroll: <code><?php echo esc_html($atts['auto']); ?></code></li>
                     <li>Currently Enrolled: <code><?php echo $is_enrolled ? 'YES' : 'NO'; ?></code></li>
                     <li>Total Enrollments: <code><?php echo count($current_enrollments); ?></code></li>
+                </ul>
+
+                <strong>Completion Tracking:</strong>
+                <ul>
+                    <li><strong>📍 Page Visited (Completed):</strong> <code style="color: <?php echo $is_completed ? '#10b981' : '#ef4444'; ?>;"><?php echo $is_completed ? 'YES ✅' : 'NO ❌'; ?></code></li>
+                    <?php if ($is_completed && $completion_date): ?>
+                    <li><strong>Completion Date:</strong> <code><?php echo esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($completion_date))); ?></code></li>
+                    <?php endif; ?>
+                    <li><strong>Total Completions:</strong> <code><?php echo count($completions); ?></code></li>
                 </ul>
 
                 <strong>Post Type Information:</strong>
@@ -1330,6 +1660,12 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
                 </button>
                 <button onclick="snnEduTestGetEnrollments()" class="snn-debug-btn">
                     Get All Enrollments
+                </button>
+                <button onclick="snnEduTestComplete(<?php echo $post_id; ?>)" class="snn-debug-btn" style="background: #10b981;">
+                    ✓ Mark Complete
+                </button>
+                <button onclick="snnEduTestGetCompletions()" class="snn-debug-btn" style="background: #10b981;">
+                    Get All Completions
                 </button>
                 <button onclick="snnEduTestFireEvent(<?php echo $post_id; ?>, 'started')" class="snn-debug-btn">
                     🟢 Fire "started" Event
@@ -1542,6 +1878,24 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
                 debugLog('Manual test: Getting all enrollments', 'info');
                 snnEduGetEnrollments(true).then(response => {
                     debugLog('Enrollments: ' + JSON.stringify(response.enrollments), 'success');
+                });
+            };
+
+            window.snnEduTestComplete = function(testPostId) {
+                debugLog('Manual test: Marking post ' + testPostId + ' as complete', 'info');
+                snnEduCompletePost(testPostId, true).then(response => {
+                    debugLog('Complete response: ' + JSON.stringify(response), response.success ? 'success' : 'error');
+                    if (response.success) {
+                        debugLog('Completion date: ' + response.completion_date, 'info');
+                    }
+                });
+            };
+
+            window.snnEduTestGetCompletions = function() {
+                debugLog('Manual test: Getting all completions', 'info');
+                snnEduGetCompletions(true).then(response => {
+                    debugLog('Completions: ' + JSON.stringify(response.completions), 'success');
+                    debugLog('Total: ' + response.count, 'info');
                 });
             };
 
