@@ -1324,10 +1324,32 @@ function snn_calculate_user_page_completion_list( $option = '' ) {
         return ! empty( $completed_parents ) ? 'true' : 'false';
     }
 
-    // Return comma-separated list of completed parent IDs
+    // Return formatted HTML list with course links and names
     if ( empty( $completed_parents ) ) {
         return '';
     }
 
-    return implode( ', ', $completed_parents );
+    // Build HTML list
+    $output = '<ul>';
+
+    foreach ( $completed_parents as $parent_id ) {
+        $parent_post = get_post( $parent_id );
+
+        if ( ! $parent_post ) {
+            continue;
+        }
+
+        $course_title = esc_html( $parent_post->post_title );
+        $course_url = esc_url( get_permalink( $parent_id ) );
+
+        $output .= '<li>';
+        $output .= '<a class="brxe-button bricks-button bricks-background-primary" href="' . $course_url . '">';
+        $output .= '<i class="ti-bookmark-alt"></i>' . $course_title;
+        $output .= '</a>';
+        $output .= '</li>';
+    }
+
+    $output .= '</ul>';
+
+    return $output;
 }
