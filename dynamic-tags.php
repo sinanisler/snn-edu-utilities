@@ -1263,50 +1263,33 @@ function snn_calculate_user_page_completion_list( $option = '' ) {
             return 'false';
         }
 
-        // Get user's enrolled posts
-        $enrolled_posts_raw = get_user_meta( $user_id, 'snn_edu_enrolled_posts', true );
+        // Get user's completed posts
+        $completed_posts_raw = get_user_meta( $user_id, 'snn_edu_completed_posts', true );
 
         // Handle if it's stored as JSON string
-        if ( is_string( $enrolled_posts_raw ) ) {
-            $enrolled_posts = json_decode( $enrolled_posts_raw, true );
+        if ( is_string( $completed_posts_raw ) ) {
+            $completed_posts = json_decode( $completed_posts_raw, true );
             if ( json_last_error() !== JSON_ERROR_NONE ) {
-                $enrolled_posts = maybe_unserialize( $enrolled_posts_raw );
+                $completed_posts = maybe_unserialize( $completed_posts_raw );
             }
         } else {
-            $enrolled_posts = $enrolled_posts_raw;
+            $completed_posts = $completed_posts_raw;
         }
 
         // Ensure it's an array
-        if ( ! is_array( $enrolled_posts ) || empty( $enrolled_posts ) ) {
+        if ( ! is_array( $completed_posts ) || empty( $completed_posts ) ) {
             return 'false';
         }
 
-        // Convert all enrolled post IDs to integers
-        $enrolled_posts = array_map( 'intval', $enrolled_posts );
-        $enrolled_posts = array_filter( $enrolled_posts ); // Remove any 0 values
+        // Convert course_id to string for array key lookup
+        $course_id_str = (string) $course_id;
 
-        // Check if the course ID itself is in enrolled posts
-        if ( ! in_array( $course_id, $enrolled_posts, true ) ) {
-            return 'false';
-        }
-
-        // Get all children for this course
-        $all_children = snn_get_all_children_recursive( $course_id );
-
-        // If there are no children, the parent alone is enough
-        if ( empty( $all_children ) ) {
+        // Check if the course ID exists in completed posts
+        if ( isset( $completed_posts[ $course_id_str ] ) ) {
             return 'true';
         }
 
-        // Check if ALL children are in the enrolled posts list
-        foreach ( $all_children as $child_id ) {
-            if ( ! in_array( (int) $child_id, $enrolled_posts, true ) ) {
-                return 'false';
-            }
-        }
-
-        // All children are enrolled, course is complete
-        return 'true';
+        return 'false';
     }
 
     // Get the author ID from the queried object (author page)
