@@ -874,6 +874,22 @@ function snn_edu_user_meta_register_routes() {
         'callback' => 'snn_edu_user_meta_get_completions',
         'permission_callback' => 'snn_edu_user_meta_check_permission',
     ));
+
+    // Public endpoint to get user's name by ID
+    register_rest_route('snn-edu/v1', '/user-name/(?P<id>\d+)', array(
+        'methods' => 'GET',
+        'callback' => 'snn_edu_get_user_name',
+        'permission_callback' => '__return_true', // Publicly accessible
+        'args' => array(
+            'id' => array(
+                'required' => true,
+                'validate_callback' => function($param) {
+                    return is_numeric($param) && intval($param) > 0;
+                },
+                'sanitize_callback' => 'absint',
+            ),
+        ),
+    ));
 }
 add_action('rest_api_init', 'snn_edu_user_meta_register_routes');
 
@@ -900,6 +916,36 @@ function snn_edu_user_meta_check_permission() {
     }
 
     return true;
+}
+
+/**
+ * Get user's name information by user ID
+ * Public endpoint - no authentication required
+ *
+ * @param WP_REST_Request $request The REST API request
+ * @return array User name information
+ */
+function snn_edu_get_user_name($request) {
+    $user_id = $request['id'];
+
+    // Get first and last name from user meta
+    $first_name = get_user_meta($user_id, 'first_name', true);
+    $last_name = get_user_meta($user_id, 'last_name', true);
+
+    // Combine names
+    $full_name = trim($first_name . ' ' . $last_name);
+
+    // Fallback to display name if no first/last name
+    if (empty($full_name)) {
+        $user = get_userdata($user_id);
+        $full_name = $user ? $user->display_name : 'Participant';
+    }
+
+    return array(
+        'first_name' => $first_name,
+        'last_name' => $last_name,
+        'full_name' => $full_name
+    );
 }
 
 /**
