@@ -1156,15 +1156,24 @@ function snn_generate_certificate_hash( $post_id = null ) {
  *
  * Usage:
  * {user_page_course_enrollment_completion_list} - Returns comma-separated list of completed course IDs
+ * {user_page_course_enrollment_completion_list:bool} - Returns "true" if user has any completed course, "false" otherwise
  *
  */
 
 // Step 1: Register the tag in the builder
 add_filter( 'bricks/dynamic_tags_list', 'snn_add_user_page_completion_list_tag' );
 function snn_add_user_page_completion_list_tag( $tags ) {
+    // Default tag (returns list of IDs)
     $tags[] = [
         'name'  => '{user_page_course_enrollment_completion_list}',
         'label' => 'User Page Course Enrollment Completion List',
+        'group' => 'SNN Edu',
+    ];
+
+    // Bool variant
+    $tags[] = [
+        'name'  => '{user_page_course_enrollment_completion_list:bool}',
+        'label' => 'User Page Course Enrollment Completion List - Boolean',
         'group' => 'SNN Edu',
     ];
 
@@ -1182,13 +1191,21 @@ function snn_get_user_page_completion_list_value( $tag, $post, $context = 'text'
     // Clean the tag (remove curly braces)
     $clean_tag = str_replace( [ '{', '}' ], '', $tag );
 
+    // Parse option if present
+    $option = '';
+    if ( strpos( $clean_tag, ':' ) !== false ) {
+        list( $tag_name, $option ) = explode( ':', $clean_tag, 2 );
+    } else {
+        $tag_name = $clean_tag;
+    }
+
     // Only process our specific tag
-    if ( $clean_tag !== 'user_page_course_enrollment_completion_list' ) {
+    if ( $tag_name !== 'user_page_course_enrollment_completion_list' ) {
         return $tag;
     }
 
-    // Get the completion list
-    $value = snn_calculate_user_page_completion_list();
+    // Get the completion list with option
+    $value = snn_calculate_user_page_completion_list( $option );
 
     return $value;
 }
@@ -1198,34 +1215,39 @@ add_filter( 'bricks/dynamic_data/render_content', 'snn_render_user_page_completi
 add_filter( 'bricks/frontend/render_data', 'snn_render_user_page_completion_list_tag', 20, 3 );
 function snn_render_user_page_completion_list_tag( $content, $post, $context = 'text' ) {
 
-    // Only process if our tag exists in content
-    if ( strpos( $content, '{user_page_course_enrollment_completion_list}' ) === false ) {
+    // Only process if any variant of our tag exists in content
+    if ( strpos( $content, '{user_page_course_enrollment_completion_list' ) === false ) {
         return $content;
     }
 
-    // Calculate the completion list
-    $value = snn_calculate_user_page_completion_list();
+    // Match both variants using regex
+    preg_match_all('/{user_page_course_enrollment_completion_list(?::([^}]+))?}/', $content, $matches);
 
-    // Replace the tag with the value
-    $content = str_replace( '{user_page_course_enrollment_completion_list}', $value, $content );
+    if ( ! empty( $matches[0] ) ) {
+        foreach ( $matches[0] as $index => $full_match ) {
+            $option = isset( $matches[1][$index] ) && $matches[1][$index] ? $matches[1][$index] : '';
+            $value = snn_calculate_user_page_completion_list( $option );
+            $content = str_replace( $full_match, $value, $content );
+        }
+    }
 
     return $content;
 }
 
 // Helper function to calculate user page completion list
-function snn_calculate_user_page_completion_list() {
+function snn_calculate_user_page_completion_list( $option = '' ) {
     // Get the author ID from the queried object (author page)
     $queried_object = get_queried_object();
     
     // Check if we're on an author page
     if ( ! $queried_object || ! isset( $queried_object->ID ) || ! is_a( $queried_object, 'WP_User' ) ) {
-        return '';
+        return $option === 'bool' ? 'false' : '';
     }
 
     $author_id = $queried_object->ID;
 
     if ( ! $author_id ) {
-        return '';
+        return $option === 'bool' ? 'false' : '';
     }
 
     // Get author's enrolled posts
@@ -1243,7 +1265,7 @@ function snn_calculate_user_page_completion_list() {
 
     // Ensure it's an array
     if ( ! is_array( $enrolled_posts ) || empty( $enrolled_posts ) ) {
-        return '';
+        return $option === 'bool' ? 'false' : '';
     }
 
     // Convert all enrolled post IDs to integers
@@ -1266,7 +1288,7 @@ function snn_calculate_user_page_completion_list() {
     }
 
     if ( empty( $parent_posts ) ) {
-        return '';
+        return $option === 'bool' ? 'false' : '';
     }
 
     // Check which parent posts have 100% completion
@@ -1295,6 +1317,11 @@ function snn_calculate_user_page_completion_list() {
         if ( $all_children_enrolled ) {
             $completed_parents[] = $parent_id;
         }
+    }
+
+    // Return based on option
+    if ( $option === 'bool' ) {
+        return ! empty( $completed_parents ) ? 'true' : 'false';
     }
 
     // Return comma-separated list of completed parent IDs
