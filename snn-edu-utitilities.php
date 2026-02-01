@@ -1102,6 +1102,7 @@ function snn_edu_user_meta_get_enrollments($request) {
 /**
  * Mark a post as completed for the current user
  * Stores post_id => completion_date
+ * CRITICAL FIX: Only marks parent as completed if ALL children are enrolled
  */
 function snn_edu_user_meta_complete_post($request) {
     $post_id = $request->get_param('post_id');
@@ -1130,6 +1131,43 @@ function snn_edu_user_meta_complete_post($request) {
     $top_parent_id = snn_edu_get_top_level_parent($post_id);
     if (!$top_parent_id) {
         $top_parent_id = $post_id; // Fallback if function fails
+    }
+
+    // CRITICAL FIX: Check if ALL children of the top-level parent are enrolled
+    // Get all children of the top-level parent
+    $all_children = get_children(array(
+        'post_parent' => $top_parent_id,
+        'post_type' => $post->post_type,
+        'post_status' => 'publish',
+        'numberposts' => -1,
+        'orderby' => 'ID',
+        'order' => 'ASC'
+    ));
+
+    // Get user's enrolled posts
+    $enrolled_posts = snn_edu_get_enrollments_safe($user_id);
+
+    // Check if all children are enrolled
+    $all_children_enrolled = true;
+    $missing_children = array();
+
+    foreach ($all_children as $child) {
+        if (!in_array($child->ID, $enrolled_posts)) {
+            $all_children_enrolled = false;
+            $missing_children[] = $child->ID;
+        }
+    }
+
+    // Only mark parent as completed if ALL children are enrolled
+    if (!$all_children_enrolled) {
+        return array(
+            'success' => false,
+            'message' => 'Cannot mark parent as completed - not all children are enrolled',
+            'post_id' => $top_parent_id,
+            'missing_children' => $missing_children,
+            'total_children' => count($all_children),
+            'enrolled_children' => count($all_children) - count($missing_children),
+        );
     }
 
     // Add completion for TOP-LEVEL parent only (not child posts)
@@ -1610,13 +1648,37 @@ function snn_edu_user_meta_tracker_shortcode($atts) {
 
     // Track completion automatically when shortcode loads
     // BUT only track the TOP-LEVEL parent (grand parent), not child posts
+    // CRITICAL FIX: Only mark parent as completed if ALL children are enrolled
     $current_post_obj = get_post($post_id);
     if ($current_post_obj && snn_edu_is_post_type_allowed($current_post_obj->post_type)) {
         $top_parent_id = snn_edu_get_top_level_parent($post_id);
         if (!$top_parent_id) {
             $top_parent_id = $post_id; // Fallback if function fails
         }
-        snn_edu_add_completion_safe($user_id, $top_parent_id);
+
+        // Check if ALL children of the top-level parent are enrolled before marking as complete
+        $all_children = get_children(array(
+            'post_parent' => $top_parent_id,
+            'post_type' => $current_post_obj->post_type,
+            'post_status' => 'publish',
+            'numberposts' => -1,
+            'orderby' => 'ID',
+            'order' => 'ASC'
+        ));
+
+        // Check if all children are enrolled
+        $all_children_enrolled = true;
+        foreach ($all_children as $child) {
+            if (!in_array($child->ID, $current_enrollments)) {
+                $all_children_enrolled = false;
+                break;
+            }
+        }
+
+        // Only mark parent as completed if ALL children are enrolled
+        if ($all_children_enrolled) {
+            snn_edu_add_completion_safe($user_id, $top_parent_id);
+        }
     }
 
     // Get parent post info for debug display
