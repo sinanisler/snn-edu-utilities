@@ -1152,12 +1152,12 @@ function snn_generate_certificate_hash( $post_id = null ) {
 /**
  * Custom Dynamic Data Tag: User Page Course Enrollment Completion List
  * Returns a list of completed courses for the author being viewed on author pages
- * A course is considered "completed" if the parent AND all its children are in the enrolled posts list
+ * Courses are retrieved from the user's 'snn_edu_completed_posts' meta field
  *
  * Usage:
  * {user_page_course_enrollment_completion_list} - Returns formatted HTML list with course links and names
  * {user_page_course_enrollment_completion_list:bool} - Returns "true" if user has any completed course, "false" otherwise
- * {user_page_course_enrollment_completion_list:certificate_link} - Returns formatted HTML list with certificate links
+ * {user_page_course_enrollment_completion_list:certificate_link} - Returns formatted HTML list with certificate links (URL format: /instructor/{author_id}/ or /user/{author_id}/ based on user role, with params: ?cid={course_id}&uid={author_id}&completion_date={date}&certificate_id={hash})
  * {user_page_course_enrollment_completion_list:bool_current_user} - Returns "true" if user from URL param (uid) has completed course from URL param (cid), "false" otherwise
  *
  */
@@ -1306,104 +1306,71 @@ function snn_calculate_user_page_completion_list( $option = '' ) {
         return $option === 'bool' ? 'false' : '';
     }
 
-    // Get author's enrolled posts
-    $enrolled_posts_raw = get_user_meta( $author_id, 'snn_edu_enrolled_posts', true );
+    // Get author's completed posts
+    $completed_posts_raw = get_user_meta( $author_id, 'snn_edu_completed_posts', true );
 
     // Handle if it's stored as JSON string
-    if ( is_string( $enrolled_posts_raw ) ) {
-        $enrolled_posts = json_decode( $enrolled_posts_raw, true );
+    if ( is_string( $completed_posts_raw ) ) {
+        $completed_posts = json_decode( $completed_posts_raw, true );
         if ( json_last_error() !== JSON_ERROR_NONE ) {
-            $enrolled_posts = maybe_unserialize( $enrolled_posts_raw );
+            $completed_posts = maybe_unserialize( $completed_posts_raw );
         }
     } else {
-        $enrolled_posts = $enrolled_posts_raw;
+        $completed_posts = $completed_posts_raw;
     }
 
     // Ensure it's an array
-    if ( ! is_array( $enrolled_posts ) || empty( $enrolled_posts ) ) {
+    if ( ! is_array( $completed_posts ) || empty( $completed_posts ) ) {
         return $option === 'bool' ? 'false' : '';
     }
 
-    // Convert all enrolled post IDs to integers
-    $enrolled_posts = array_map( 'intval', $enrolled_posts );
-    $enrolled_posts = array_filter( $enrolled_posts ); // Remove any 0 values
+    // Extract completed course IDs (keys from the completed_posts array)
+    $completed_course_ids = array_keys( $completed_posts );
 
-    // Get only parent posts from the enrolled list (posts with no parent)
-    $parent_posts = [];
-    foreach ( $enrolled_posts as $post_id ) {
-        $post = get_post( $post_id );
-
-        if ( ! $post ) {
-            continue;
-        }
-
-        // Check if this is a parent post (post_parent = 0)
-        if ( $post->post_parent == 0 ) {
-            $parent_posts[] = $post_id;
-        }
-    }
-
-    if ( empty( $parent_posts ) ) {
+    if ( empty( $completed_course_ids ) ) {
         return $option === 'bool' ? 'false' : '';
-    }
-
-    // Check which parent posts have 100% completion
-    $completed_parents = [];
-
-    foreach ( $parent_posts as $parent_id ) {
-        // Get all children for this parent
-        $all_children = snn_get_all_children_recursive( $parent_id );
-
-        // If there are no children, the parent alone is considered complete
-        if ( empty( $all_children ) ) {
-            $completed_parents[] = $parent_id;
-            continue;
-        }
-
-        // Check if ALL children are in the enrolled posts list
-        $all_children_enrolled = true;
-        foreach ( $all_children as $child_id ) {
-            if ( ! in_array( (int) $child_id, $enrolled_posts, true ) ) {
-                $all_children_enrolled = false;
-                break;
-            }
-        }
-
-        // If all children are enrolled, this parent is complete
-        if ( $all_children_enrolled ) {
-            $completed_parents[] = $parent_id;
-        }
     }
 
     // Return based on option
     if ( $option === 'bool' ) {
-        return ! empty( $completed_parents ) ? 'true' : 'false';
-    }
-
-    // Return formatted HTML list with course links and names
-    if ( empty( $completed_parents ) ) {
-        return '';
+        return 'true';
     }
 
     // Build HTML list
     $output = '<ul>';
 
-    foreach ( $completed_parents as $parent_id ) {
-        $parent_post = get_post( $parent_id );
+    foreach ( $completed_course_ids as $course_id_str ) {
+        $course_id = (int) $course_id_str;
+        $course_post = get_post( $course_id );
 
-        if ( ! $parent_post ) {
+        if ( ! $course_post ) {
             continue;
         }
 
-        $course_title = esc_html( $parent_post->post_title );
+        $course_title = esc_html( $course_post->post_title );
+        $completion_date = $completed_posts[ $course_id_str ];
+
+        // Format the completion date as "01.Feb.2026"
+        $timestamp = strtotime( $completion_date );
+        $formatted_date = $timestamp ? date( 'd.M.Y', $timestamp ) : '';
 
         // Determine URL based on option
         if ( $option === 'certificate_link' ) {
             // Generate certificate hash for this course and author
-            $certificate_hash = snn_generate_certificate_hash_for_user( $parent_id, $author_id );
-            $course_url = esc_url( home_url( '/instructor/' . $author_id . '/?cid=' . $parent_id . '&certificate_id=' . $certificate_hash ) );
+            $certificate_hash = snn_generate_certificate_hash_for_user( $course_id, $author_id );
+
+            // Determine URL slug based on user role
+            $user_data = get_userdata( $author_id );
+            $url_slug = 'user'; // Default to 'user'
+
+            if ( $user_data && in_array( 'instructor', (array) $user_data->roles ) ) {
+                $url_slug = 'instructor';
+            }
+
+            // Build URL: /{url_slug}/{author_id}/?cid={course_id}&uid={author_id}&completion_date={date}&certificate_id={hash}
+            $course_url = esc_url( home_url( '/' . $url_slug . '/' . $author_id . '/?cid=' . $course_id . '&uid=' . $author_id . '&completion_date=' . urlencode( $formatted_date ) . '&certificate_id=' . $certificate_hash ) );
         } else {
-            $course_url = esc_url( get_permalink( $parent_id ) );
+            $course_url = esc_url( get_permalink( $course_id ) );
         }
 
         $output .= '<li>';
